@@ -376,7 +376,18 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         self.init_state(true).await?;
 
         self.trace_user();
-        self.hydrate_caches();
+        // Under the comint frontend, skip the fire-and-forget cache hydration
+        // tasks. They sometimes outlive the main loop on a fast `/exit` or
+        // EOF, and the runtime then panics on shutdown with "JoinHandle polled
+        // after completion". Comint sessions are short-lived editor
+        // subprocesses where the latency saving from pre-warmed caches is
+        // negligible compared to the cost of a flaky non-zero exit code (which
+        // editors visualise as an error badge). The race is documented in the
+        // `TopLevelCommand::Info` branch of `handle_subcommands` for the same
+        // reason.
+        if !FrontendMode::resolve(self.cli.frontend).is_comint() {
+            self.hydrate_caches();
+        }
         self.init_conversation().await?;
 
         // Check for dispatch flag first
