@@ -95,34 +95,50 @@ async fn run() -> Result<()> {
     // resolution is repeated inside `UI::init` so the choice flows into the
     // spinner and selectors.
     let frontend = FrontendMode::resolve(cli.frontend);
-    if frontend.is_comint() {
+
+    // Gate unstable frontends behind --unstable. This must run before any
+    // output so the JSON wire stays clean if --unstable is missing.
+    if frontend.is_unstable() && !cli.unstable {
+        anyhow::bail!(
+            "frontend `{:?}` is unstable; pass --unstable to opt in (\
+             see docs/frontend-protocol.md)",
+            frontend
+        );
+    }
+
+    if frontend.is_dumb() {
         // Globally disable `colored` ANSI escapes. Comint renders bare
-        // `\x1b[1m` etc. as literal text, which destroys readability. Other
-        // styling crates (`nu_ansi_term`, `console`) are scoped to the
-        // reedline / crossterm code paths that the comint frontend never
-        // exercises.
+        // `\x1b[1m` etc. as literal text, which destroys readability; the
+        // JSON wire treats any stray bytes outside an event line as a
+        // protocol violation. Other styling crates (`nu_ansi_term`,
+        // `console`) are scoped to the reedline / crossterm code paths
+        // that the dumb frontends never exercise.
         colored::control::set_override(false);
 
-        // Publish the resolved mode as an env var so the selector crate
-        // (`forge_select`) can pick line-prompt fallbacks without a
+        // Publish the resolved mode as an env var so downstream crates
+        // (e.g. `forge_select`) can pick line-prompt fallbacks without a
         // dependency on `forge_main`. Reading is via `env::var`; both
-        // setting and reading happen in the same process so this is safe.
+        // setting and reading happen in the same process.
+        //
         // SAFETY: `set_var` is `unsafe` on edition 2024 because env var
         // mutation is not thread-safe. We call it before any threads are
         // spawned (no tokio runtime, no spinner thread, no API), so this
         // is sound.
+        let value = if frontend.is_json() { "json" } else { "comint" };
         unsafe {
-            std::env::set_var("FORGE_FRONTEND", "comint");
+            std::env::set_var("FORGE_FRONTEND", value);
         }
     }
 
     // Check if there's piped input, but skip for `forge select` since that
-    // command uses stdin for its item list. Also skip under the comint
-    // frontend — comint subprocesses connect stdin to a live pipe (not a
-    // TTY), which would falsely trigger the slurp path and block forever
-    // waiting for an EOF that only arrives when the editor closes.
+    // command uses stdin for its item list. Also skip under dumb frontends
+    // (comint, json) — their subprocesses connect stdin to a live pipe (not
+    // a TTY), which would falsely trigger the slurp path and block forever
+    // waiting for an EOF that only arrives when the editor closes. The
+    // JSON frontend additionally needs stdin live so the protocol reader
+    // can consume client events.
     let is_select = matches!(cli.subcommands, Some(TopLevelCommand::Select(_)));
-    if !is_select && !frontend.is_comint() && !std::io::stdin().is_terminal() {
+    if !is_select && !frontend.is_dumb() && !std::io::stdin().is_terminal() {
         let mut stdin_content = String::new();
         std::io::stdin().read_to_string(&mut stdin_content)?;
         let trimmed_content = stdin_content.trim();

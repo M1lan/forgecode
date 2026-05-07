@@ -76,16 +76,29 @@ pub struct Cli {
     /// no raw mode, no spinner animation, no ANSI escapes, and selectors
     /// that fall back to numbered text prompts.
     ///
+    /// `json` speaks a versioned NDJSON protocol over stdin/stdout for
+    /// driver embedding (e.g. an Emacs `forge.el` major mode, Neovim, Helix).
+    /// Each line is one event. See `docs/frontend-protocol.md`.
+    ///
     /// When unset, comint is auto-selected when `INSIDE_EMACS` contains
-    /// `comint` or `TERM=dumb`; otherwise `tty` is used.
+    /// `comint` or `TERM=dumb`; otherwise `tty` is used. `json` is never
+    /// auto-selected — it is opt-in only.
     #[arg(long, value_enum)]
     pub frontend: Option<FrontendMode>,
+
+    /// Opt in to unstable protocol surfaces.
+    ///
+    /// Required to use `--frontend=json` while the protocol is still in `v0`.
+    /// Without this flag, selecting an unstable frontend exits with an error
+    /// before any output is produced. Hidden from `--help` to keep the public
+    /// surface small.
+    #[arg(long, hide = true, default_value_t = false)]
+    pub unstable: bool,
 }
 
 /// Selects how the CLI frontend renders output and reads input.
 ///
-/// See [`Cli::frontend`] for selection semantics. New variants will be added
-/// for the JSON line protocol once Track B lands.
+/// See [`Cli::frontend`] for selection semantics.
 #[derive(Copy, Clone, Debug, ValueEnum, Default, PartialEq, Eq)]
 #[clap(rename_all = "lower")]
 pub enum FrontendMode {
@@ -94,6 +107,9 @@ pub enum FrontendMode {
     Tty,
     /// Dumb-terminal frontend for Emacs comint and similar shells.
     Comint,
+    /// NDJSON line protocol over stdin/stdout for editor embedding.
+    /// Unstable — requires `--unstable` until protocol promotes from v0 to v1.
+    Json,
 }
 
 impl FrontendMode {
@@ -104,6 +120,26 @@ impl FrontendMode {
         matches!(self, Self::Comint)
     }
 
+    /// Returns `true` when the active frontend is the NDJSON line protocol.
+    /// JSON-mode callers must avoid printing free-form text to stdout — every
+    /// byte must be a well-formed JSON event terminated by a single `\n`.
+    pub fn is_json(self) -> bool {
+        matches!(self, Self::Json)
+    }
+
+    /// Returns `true` when the frontend cannot drive a raw-mode TTY (i.e.
+    /// comint or json). Spinner and crossterm selectors must use their
+    /// non-TTY fallbacks under this mode.
+    pub fn is_dumb(self) -> bool {
+        !matches!(self, Self::Tty)
+    }
+
+    /// Returns `true` when the frontend's protocol surface is unstable and
+    /// gated behind `--unstable`. Currently this only covers `json`.
+    pub fn is_unstable(self) -> bool {
+        matches!(self, Self::Json)
+    }
+
     /// Resolves the frontend mode from the CLI flag, falling back to
     /// environment-based auto-detection when the flag is omitted.
     ///
@@ -111,6 +147,9 @@ impl FrontendMode {
     /// - `INSIDE_EMACS` contains `comint` -> `Comint`
     /// - `TERM` equals `dumb` -> `Comint`
     /// - Otherwise -> `Tty`
+    ///
+    /// `Json` is never auto-selected; it must be opted in with
+    /// `--frontend=json --unstable`.
     pub fn resolve(flag: Option<FrontendMode>) -> FrontendMode {
         if let Some(mode) = flag {
             return mode;
@@ -2131,5 +2170,45 @@ mod tests {
     fn test_frontend_mode_is_comint() {
         assert!(FrontendMode::Comint.is_comint());
         assert!(!FrontendMode::Tty.is_comint());
+        assert!(!FrontendMode::Json.is_comint());
+    }
+
+    #[test]
+    fn test_frontend_flag_json() {
+        let fixture = Cli::parse_from(["forge", "--frontend", "json"]);
+        assert_eq!(fixture.frontend, Some(FrontendMode::Json));
+    }
+
+    #[test]
+    fn test_frontend_mode_is_json() {
+        assert!(FrontendMode::Json.is_json());
+        assert!(!FrontendMode::Tty.is_json());
+        assert!(!FrontendMode::Comint.is_json());
+    }
+
+    #[test]
+    fn test_frontend_mode_is_dumb() {
+        assert!(FrontendMode::Comint.is_dumb());
+        assert!(FrontendMode::Json.is_dumb());
+        assert!(!FrontendMode::Tty.is_dumb());
+    }
+
+    #[test]
+    fn test_frontend_mode_is_unstable() {
+        assert!(FrontendMode::Json.is_unstable());
+        assert!(!FrontendMode::Tty.is_unstable());
+        assert!(!FrontendMode::Comint.is_unstable());
+    }
+
+    #[test]
+    fn test_unstable_flag_default_false() {
+        let fixture = Cli::parse_from(["forge"]);
+        assert_eq!(fixture.unstable, false);
+    }
+
+    #[test]
+    fn test_unstable_flag_set() {
+        let fixture = Cli::parse_from(["forge", "--unstable"]);
+        assert_eq!(fixture.unstable, true);
     }
 }

@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use forge_api::Environment;
 
 use crate::editor::{ForgeEditor, ReadResult};
+use crate::frontend::protocol::{ClientEvent, PROTOCOL_VERSION, ServerEvent};
 use crate::model::{AppCommand, ForgeCommandManager};
 use crate::prompt::ForgePrompt;
 use crate::tracker;
@@ -32,6 +33,10 @@ pub enum UserInput {
     Console(Box<Console>),
     /// Dumb-terminal frontend: line-buffered stdin reads, plain prompt.
     Comint(CominInput),
+    /// NDJSON line-protocol frontend: reads [`ClientEvent`]s from stdin and
+    /// emits [`ServerEvent`]s on stdout. Unstable; gated behind
+    /// `--frontend=json --unstable`. See `docs/frontend-protocol.md`.
+    Json(JsonInput),
 }
 
 impl UserInput {
@@ -39,11 +44,13 @@ impl UserInput {
     ///
     /// Dispatches to the active frontend's prompt loop. The TTY frontend
     /// owns the terminal in raw mode; the comint frontend reads one
-    /// newline-delimited line at a time from stdin.
+    /// newline-delimited line at a time from stdin; the JSON frontend
+    /// reads one [`ClientEvent`] per line and translates it.
     pub async fn prompt(&self, prompt: &mut ForgePrompt) -> anyhow::Result<AppCommand> {
         match self {
             Self::Console(console) => console.prompt(prompt).await,
             Self::Comint(comint) => comint.prompt(prompt).await,
+            Self::Json(json) => json.prompt(prompt).await,
         }
     }
 
@@ -53,11 +60,14 @@ impl UserInput {
     /// this calls into reedline's edit-command queue. In comint mode,
     /// pre-fill is best-effort — comint subprocesses cannot inject text
     /// into their own input ring, so the content is buffered and emitted
-    /// as a `[forge:prefill]…[/]` marker line on the next prompt.
+    /// as a `[forge:prefill]…[/]` marker line on the next prompt. In JSON
+    /// mode the content is emitted as a [`ServerEvent::Status`] of level
+    /// `"prefill"` so the client can `(insert)` it server-side.
     pub fn set_buffer(&self, content: String) {
         match self {
             Self::Console(console) => console.set_buffer(content),
             Self::Comint(comint) => comint.set_buffer(content),
+            Self::Json(json) => json.set_buffer(content),
         }
     }
 }
@@ -180,6 +190,140 @@ impl CominInput {
     }
 }
 
+/// NDJSON line-protocol input reader for `--frontend=json`.
+///
+/// Reads one [`ClientEvent`] per newline from stdin and translates it into
+/// an [`AppCommand`] for the surrounding event loop:
+///
+/// - [`ClientEvent::Submit`] → `AppCommand::Message(text)` via the same
+///   `ForgeCommandManager::parse` that the other frontends use, so slash
+///   commands embedded in `text` (e.g. `"/new"`) still route correctly.
+/// - [`ClientEvent::Command`] with `name == "exit"` → [`AppCommand::Exit`].
+///   Other named commands are joined with their args and parsed.
+/// - [`ClientEvent::Cancel`] / [`ClientEvent::SelectResponse`] → currently
+///   dropped (no in-flight cancellation or selector wiring yet); the
+///   surrounding loop re-prompts. Wiring lands with the full `Frontend`
+///   refactor.
+/// - [`ClientEvent::SetBuffer`] → buffered and emitted as a status event
+///   on the next prompt cycle.
+///
+/// EOF on stdin returns [`AppCommand::Exit`]. Malformed JSON lines emit a
+/// [`ServerEvent::Error`] and re-prompt; this matches the protocol's
+/// "unknown event must not crash" rule (`docs/frontend-protocol.md`).
+pub struct JsonInput {
+    command: Arc<ForgeCommandManager>,
+    /// Pending `set_buffer` payload to flush as a status event on the next
+    /// prompt cycle. JSON clients are expected to mirror this back into
+    /// their input buffer themselves.
+    prefill: Mutex<Option<String>>,
+}
+
+impl JsonInput {
+    /// Creates a new JSON input reader bound to the given command manager.
+    pub fn new(command: Arc<ForgeCommandManager>) -> Self {
+        Self { command, prefill: Mutex::new(None) }
+    }
+
+    /// Reads [`ClientEvent`]s from stdin until one translates to an
+    /// [`AppCommand`].
+    ///
+    /// Drains any pending pre-fill as a `Status { level: "prefill" }`
+    /// event before reading. Empty lines are skipped silently.
+    pub async fn prompt(&self, _prompt: &mut ForgePrompt) -> anyhow::Result<AppCommand> {
+        // Flush any pending prefill so the JSON client can mirror it back
+        // into its input area.
+        if let Some(pending) = self.prefill.lock().unwrap().take() {
+            let event = ServerEvent::Status {
+                v: PROTOCOL_VERSION,
+                level: "prefill".into(),
+                text: pending,
+            };
+            emit_event(&event)?;
+        }
+
+        let stdin = io::stdin();
+        let mut reader = BufReader::new(stdin.lock());
+        loop {
+            let mut line = String::new();
+            let bytes = reader.read_line(&mut line)?;
+            if bytes == 0 {
+                // EOF — stdin closed.
+                return Ok(AppCommand::Exit);
+            }
+
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            match serde_json::from_str::<ClientEvent>(trimmed) {
+                Ok(event) => {
+                    if let Some(cmd) = self.translate(event)? {
+                        return Ok(cmd);
+                    }
+                    // Event accepted but no command produced (e.g. cancel,
+                    // select_response with no in-flight selector). Loop
+                    // and read the next event.
+                }
+                Err(err) => {
+                    // Malformed JSON: emit an error event and keep reading.
+                    let mut event = ServerEvent::error(format!("invalid client event: {err}"));
+                    if let ServerEvent::Error { ref mut cause, .. } = event {
+                        *cause = trimmed.to_string();
+                    }
+                    emit_event(&event)?;
+                }
+            }
+        }
+    }
+
+    /// Translates a [`ClientEvent`] into an [`AppCommand`] when possible.
+    /// Returns `Ok(None)` for events that should be silently consumed
+    /// (cancel, select_response without an in-flight selector,
+    /// set_buffer which only mutates state).
+    fn translate(&self, event: ClientEvent) -> anyhow::Result<Option<AppCommand>> {
+        match event {
+            ClientEvent::Submit { text, .. } => {
+                tracker::prompt(text.clone());
+                self.command.parse(&text).map(Some)
+            }
+            ClientEvent::Command { name, args, .. } => {
+                let trimmed = name.trim_start_matches('/').trim_start_matches(':');
+                let mut joined = format!("/{trimmed}");
+                if !args.is_empty() {
+                    joined.push(' ');
+                    joined.push_str(&args.join(" "));
+                }
+                self.command.parse(&joined).map(Some)
+            }
+            ClientEvent::SetBuffer { text, .. } => {
+                self.set_buffer(text);
+                Ok(None)
+            }
+            ClientEvent::Cancel { .. } | ClientEvent::SelectResponse { .. } => Ok(None),
+        }
+    }
+
+    /// Buffers `content` to be emitted as a `Status { level: "prefill" }`
+    /// event on the next prompt cycle.
+    pub fn set_buffer(&self, content: String) {
+        *self.prefill.lock().unwrap() = Some(content);
+    }
+}
+
+/// Writes a single [`ServerEvent`] to stdout as one NDJSON line and flushes.
+///
+/// Used by [`JsonInput`] for out-of-band events (errors, prefill status).
+/// The full streaming pipeline goes through [`crate::frontend::JsonConsoleWriter`]
+/// (forthcoming) instead of this helper.
+fn emit_event(event: &ServerEvent) -> anyhow::Result<()> {
+    let line = serde_json::to_string(event)?;
+    let mut out = io::stdout().lock();
+    writeln!(out, "{line}")?;
+    out.flush()?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
@@ -222,6 +366,120 @@ mod tests {
 
         let actual = comint.prefill.lock().unwrap().clone();
         let expected = Some("second".to_string());
+        assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn test_json_input_translate_submit_to_message() {
+        // `translate(Submit)` calls `tracker::prompt` which dispatches to a
+        // tokio runtime; wrap the test in `#[tokio::test]` so a runtime is
+        // available.
+        let command = Arc::new(ForgeCommandManager::default());
+        let json = JsonInput::new(command);
+
+        let event = ClientEvent::Submit {
+            v: PROTOCOL_VERSION,
+            id: "c1".into(),
+            text: "hello world".into(),
+            attachments: vec![],
+        };
+        let actual = json.translate(event).unwrap();
+        let expected = Some(AppCommand::Message("hello world".into()));
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_json_input_translate_set_buffer_consumes_silently() {
+        let command = Arc::new(ForgeCommandManager::default());
+        let json = JsonInput::new(command);
+
+        let event = ClientEvent::SetBuffer {
+            v: PROTOCOL_VERSION,
+            id: "c2".into(),
+            text: "draft".into(),
+        };
+        let actual = json.translate(event).unwrap();
+        assert_eq!(actual, None);
+        assert_eq!(
+            json.prefill.lock().unwrap().clone(),
+            Some("draft".to_string())
+        );
+    }
+
+    #[test]
+    fn test_json_input_translate_cancel_consumes_silently() {
+        let command = Arc::new(ForgeCommandManager::default());
+        let json = JsonInput::new(command);
+
+        let event = ClientEvent::Cancel {
+            v: PROTOCOL_VERSION,
+            id: "c3".into(),
+            target: "t1".into(),
+        };
+        let actual = json.translate(event).unwrap();
+        assert_eq!(actual, None);
+    }
+
+    #[test]
+    fn test_json_input_translate_select_response_consumes_silently() {
+        let command = Arc::new(ForgeCommandManager::default());
+        let json = JsonInput::new(command);
+
+        let event = ClientEvent::SelectResponse {
+            v: PROTOCOL_VERSION,
+            id: "c4".into(),
+            target: "sel-7".into(),
+            value: "yes".into(),
+        };
+        let actual = json.translate(event).unwrap();
+        assert_eq!(actual, None);
+    }
+
+    #[test]
+    fn test_json_input_translate_command_exit() {
+        // ForgeCommandManager parses "/exit" → AppCommand::Exit. Verify
+        // that ClientEvent::Command{name:"exit"} routes the same way.
+        let command = Arc::new(ForgeCommandManager::default());
+        let json = JsonInput::new(command);
+
+        let event = ClientEvent::Command {
+            v: PROTOCOL_VERSION,
+            id: "c5".into(),
+            name: "exit".into(),
+            args: vec![],
+        };
+        let actual = json.translate(event).unwrap();
+        let expected = Some(AppCommand::Exit);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_json_input_translate_command_strips_leading_slash() {
+        // Allow clients to send `name: "/exit"` or `name: "exit"`
+        // interchangeably; both should parse the same.
+        let command = Arc::new(ForgeCommandManager::default());
+        let json = JsonInput::new(command);
+
+        let event = ClientEvent::Command {
+            v: PROTOCOL_VERSION,
+            id: "c5".into(),
+            name: "/exit".into(),
+            args: vec![],
+        };
+        let actual = json.translate(event).unwrap();
+        let expected = Some(AppCommand::Exit);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_json_input_set_buffer_stores_pending() {
+        let command = Arc::new(ForgeCommandManager::default());
+        let json = JsonInput::new(command);
+
+        json.set_buffer("hello".into());
+
+        let actual = json.prefill.lock().unwrap().clone();
+        let expected = Some("hello".to_string());
         assert_eq!(actual, expected);
     }
 }

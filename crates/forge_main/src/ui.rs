@@ -39,7 +39,7 @@ use crate::display_constants::{CommandType, headers, markers, status};
 use crate::editor::ReadLineError;
 use crate::error::UIError;
 use crate::info::Info;
-use crate::input::{CominInput, Console, UserInput};
+use crate::input::{CominInput, Console, JsonInput, UserInput};
 use crate::model::{AppCommand, ForgeCommandManager};
 use crate::porcelain::Porcelain;
 use crate::prompt::ForgePrompt;
@@ -278,9 +278,10 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         let command = Arc::new(ForgeCommandManager::default());
         let frontend = FrontendMode::resolve(cli.frontend);
         let mut spinner_manager = SpinnerManager::new(api.clone());
-        if frontend.is_comint() {
-            // Suppress the animated spinner under dumb terminals — its VT
-            // cursor escapes leave garbage in comint scrollback.
+        if frontend.is_dumb() {
+            // Suppress the animated spinner under dumb terminals (comint) and
+            // structured frontends (json) — its VT cursor escapes leave
+            // garbage in scrollback, and they would corrupt the JSON wire.
             spinner_manager.set_quiet(true);
         }
         let spinner = SharedSpinner::new(spinner_manager);
@@ -291,6 +292,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 command.clone(),
             ))),
             FrontendMode::Comint => UserInput::Comint(CominInput::new(command.clone())),
+            FrontendMode::Json => UserInput::Json(JsonInput::new(command.clone())),
         };
         Ok(Self {
             state: UIState::new(env.clone()),
