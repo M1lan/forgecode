@@ -112,6 +112,17 @@ pub struct UI<A: ConsoleWriter, F: Fn(ForgeConfig) -> A> {
     cli: Cli,
     spinner: SharedSpinner<A>,
     config: ForgeConfig,
+    /// Active JSON frontend, present only when `--frontend=json`. Wraps
+    /// the [`crate::frontend::JsonConsoleWriter`] and exposes typed
+    /// `emit_*` methods that the lifecycle code calls at well-defined
+    /// points (ready, turn start/end, tool call/result, status, error).
+    /// Stored as `Arc` because the spinner / streaming pipeline both
+    /// need shared, thread-safe access without leaking lifetimes.
+    json_frontend: Option<Arc<crate::frontend::JsonFrontend>>,
+    /// Tracks the active turn id under JSON mode. `Some` between
+    /// `emit_turn_start` and `emit_turn_end`; otherwise `None`. Used to
+    /// tag tool-call / tool-result / chunk events with the right turn.
+    active_turn: Option<crate::frontend::protocol::TurnId>,
     #[allow(dead_code)] // The guard is kept alive by being held in the struct
     _guard: forge_tracker::Guard,
 }
@@ -196,7 +207,14 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
     }
 
     /// Displays banner only if user is in interactive mode.
+    ///
+    /// Suppressed entirely under the JSON frontend — the banner is plain
+    /// text and would corrupt the NDJSON wire. Clients can fetch the
+    /// equivalent information from the `ready` event payload.
     fn display_banner(&self) -> Result<()> {
+        if self.json_frontend.is_some() {
+            return Ok(());
+        }
         if self.cli.is_interactive() {
             banner::display(false)?;
         }
@@ -285,6 +303,24 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             spinner_manager.set_quiet(true);
         }
         let spinner = SharedSpinner::new(spinner_manager);
+        let json_frontend = if frontend.is_json() {
+            // Build the JSON console writer once and share it via Arc:
+            //  - JsonFrontend uses it for `emit_*` events (turn_start, etc.)
+            //  - It is also installed as the process-wide redirect sink so
+            //    every byte written by the streaming markdown renderer
+            //    flows through the same NDJSON channel as a `chunk` event.
+            //
+            //    `forge_domain::install_redirect` is a `OnceLock` setter
+            //    so subsequent installs are no-ops; this matches the
+            //    "one frontend per process" model.
+            let writer = Arc::new(crate::frontend::JsonConsoleWriter::new(Box::new(
+                std::io::stdout(),
+            )));
+            let _ = forge_domain::install_redirect(writer.clone());
+            Some(Arc::new(crate::frontend::JsonFrontend::new(writer)))
+        } else {
+            None
+        };
         let console = match frontend {
             FrontendMode::Tty => UserInput::Console(Box::new(Console::new(
                 env.clone(),
@@ -304,6 +340,8 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             spinner,
             markdown: MarkdownFormat::new(),
             config,
+            json_frontend,
+            active_turn: None,
             _guard: forge_tracker::init_tracing(env.log_path(), TRACKER.clone())?,
         })
     }
@@ -391,6 +429,25 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             self.hydrate_caches();
         }
         self.init_conversation().await?;
+
+        // Emit `ready` event for the JSON frontend so clients know the
+        // session is fully initialised and they may start sending events.
+        if let Some(json) = self.json_frontend.clone() {
+            let conv_id = self
+                .state
+                .conversation_id
+                .as_ref()
+                .map(|id| id.into_string())
+                .unwrap_or_default();
+            let agent_id = self.api.get_active_agent().await.unwrap_or_default();
+            let model = self
+                .api
+                .get_agent_model(agent_id.clone())
+                .await
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            let _ = json.emit_ready(conv_id, agent_id.as_str().to_string(), model);
+        }
 
         // Check for dispatch flag first
         if let Some(dispatch_json) = self.cli.event.clone() {
@@ -4026,26 +4083,53 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
     async fn on_chat(&mut self, chat: ChatRequest) -> Result<()> {
         let mut stream = self.api.chat(chat).await?;
 
+        // Emit `turn_start` for JSON frontend clients before the first chunk
+        // arrives, and remember the active turn id so chunks/tool events can
+        // correlate. `emit_turn_start` also tags the underlying writer so
+        // bytes written by the streaming markdown renderer carry the right
+        // `turn_id` in their `chunk` event.
+        let turn_id = if let Some(json) = self.json_frontend.clone() {
+            let id = json.emit_turn_start().ok();
+            if let Some(ref tid) = id {
+                self.active_turn = Some(tid.clone());
+            }
+            id
+        } else {
+            None
+        };
+
         // Always use streaming content writer
         let mut writer = StreamingWriter::new(self.spinner.clone(), self.api.clone());
 
-        while let Some(message) = stream.next().await {
-            match message {
-                Ok(message) => self.handle_chat_response(message, &mut writer).await?,
-                Err(err) => {
-                    writer.finish()?;
-                    self.spinner.stop(None)?;
-                    self.spinner.reset();
-                    return Err(err);
+        let result = async {
+            while let Some(message) = stream.next().await {
+                match message {
+                    Ok(message) => self.handle_chat_response(message, &mut writer).await?,
+                    Err(err) => {
+                        writer.finish()?;
+                        self.spinner.stop(None)?;
+                        self.spinner.reset();
+                        return Err(err);
+                    }
                 }
             }
+
+            writer.finish()?;
+            self.spinner.stop(None)?;
+            self.spinner.reset();
+
+            Ok::<(), anyhow::Error>(())
+        }
+        .await;
+
+        // Emit `turn_end` regardless of outcome so the client can re-enable
+        // its input prompt.
+        if let (Some(json), Some(id)) = (self.json_frontend.clone(), turn_id) {
+            let _ = json.emit_turn_end(&id);
+            self.active_turn = None;
         }
 
-        writer.finish()?;
-        self.spinner.stop(None)?;
-        self.spinner.reset();
-
-        Ok(())
+        result
     }
 
     /// Fetches related conversations for a given conversation in parallel.
@@ -4181,6 +4265,19 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
 
                 writer.finish()?;
 
+                // Emit tool_call event for JSON frontend clients before the
+                // tool actually runs, so editors can render a placeholder.
+                if let (Some(json), Some(turn)) = (&self.json_frontend, &self.active_turn) {
+                    let args = serde_json::to_value(&tool_call.arguments)
+                        .unwrap_or(serde_json::Value::Null);
+                    let tool_id = tool_call
+                        .call_id
+                        .as_ref()
+                        .map(|id| id.as_str().to_string())
+                        .unwrap_or_else(|| format!("call-{}", tool_call.name.as_str()));
+                    let _ = json.emit_tool_call(turn, tool_id, tool_call.name.as_str(), args);
+                }
+
                 // Stop spinner only for tools that require stdout/stderr access
                 if tool_call.requires_stdout() {
                     self.spinner.stop(None)?;
@@ -4203,6 +4300,27 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                     ToolCallPayload::new(toolcall_result.name.to_string())
                 };
                 tracker::tool_call(payload);
+
+                // Emit tool_result event for JSON frontend clients.
+                if let (Some(json), Some(turn)) = (&self.json_frontend, &self.active_turn) {
+                    let summary = toolcall_result
+                        .output
+                        .as_str()
+                        .map(|s| s.to_string())
+                        .or_else(|| serde_json::to_string(&toolcall_result.output).ok())
+                        .unwrap_or_default();
+                    let tool_id = toolcall_result
+                        .call_id
+                        .as_ref()
+                        .map(|id| id.as_str().to_string())
+                        .unwrap_or_else(|| format!("call-{}", toolcall_result.name.as_str()));
+                    let _ = json.emit_tool_result(
+                        turn,
+                        tool_id,
+                        !toolcall_result.is_error(),
+                        summary,
+                    );
+                }
 
                 self.spinner.start(None)?;
                 if !self.cli.verbose {

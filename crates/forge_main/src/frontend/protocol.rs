@@ -345,6 +345,160 @@ impl ServerEvent {
 }
 
 #[cfg(test)]
+#[cfg(test)]
+mod snapshot_tests {
+    use insta::assert_yaml_snapshot;
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+
+    /// Snapshot test that pins the on-the-wire shape of a representative
+    /// event stream. This exists alongside the more granular round-trip
+    /// tests above so the "shape of the wire" — what an editor will see —
+    /// is captured in one diff-friendly artefact rather than scattered
+    /// across multiple `json!()` literals.
+    ///
+    /// The events span the full happy-path of a turn:
+    ///   ready -> turn_start -> reasoning chunk -> assistant chunk
+    ///       -> tool_call -> tool_result -> usage -> turn_end
+    ///
+    /// Plus the two non-turn shapes (status, error) and a select cycle.
+    #[test]
+    fn test_server_event_stream_snapshot() {
+        let stream = vec![
+            ServerEvent::Ready {
+                v: PROTOCOL_VERSION,
+                conversation_id: "conv-1".into(),
+                agent: "forge".into(),
+                model: "claude-opus-4-7".into(),
+            },
+            ServerEvent::TurnStart {
+                v: PROTOCOL_VERSION,
+                turn_id: "t1".into(),
+            },
+            ServerEvent::Reasoning {
+                v: PROTOCOL_VERSION,
+                turn_id: "t1".into(),
+                text: "Considering the request…".into(),
+            },
+            ServerEvent::Chunk {
+                v: PROTOCOL_VERSION,
+                turn_id: "t1".into(),
+                stream: "assistant".into(),
+                text: "Here's the answer.".into(),
+            },
+            ServerEvent::ToolCall {
+                v: PROTOCOL_VERSION,
+                turn_id: "t1".into(),
+                tool_id: "k1".into(),
+                name: "read".into(),
+                args: serde_json::json!({"path": "src/lib.rs"}),
+            },
+            ServerEvent::ToolResult {
+                v: PROTOCOL_VERSION,
+                turn_id: "t1".into(),
+                tool_id: "k1".into(),
+                ok: true,
+                summary: "100 lines".into(),
+            },
+            ServerEvent::Usage {
+                v: PROTOCOL_VERSION,
+                turn_id: "t1".into(),
+                input_tokens: 1234,
+                output_tokens: 56,
+                cost: 0.0125,
+            },
+            ServerEvent::TurnEnd {
+                v: PROTOCOL_VERSION,
+                turn_id: "t1".into(),
+            },
+            ServerEvent::Status {
+                v: PROTOCOL_VERSION,
+                level: "info".into(),
+                text: "Saved.".into(),
+            },
+            ServerEvent::Select {
+                v: PROTOCOL_VERSION,
+                sel_id: "sel-1".into(),
+                prompt: "Pick provider:".into(),
+                options: vec!["anthropic".into(), "openai".into()],
+                multi: false,
+                default: "".into(),
+            },
+            ServerEvent::error("session blew up"),
+        ];
+
+        // Serialize as NDJSON-compatible Vec<Value> so the snapshot is
+        // diff-friendly and the wire format is captured field-by-field.
+        let lines: Vec<serde_json::Value> = stream
+            .iter()
+            .map(|e| serde_json::to_value(e).expect("serialise"))
+            .collect();
+
+        assert_yaml_snapshot!("server_event_stream", lines);
+
+        // Round-trip back through deserialisation to prove every line is
+        // also a valid input to a strict parser.
+        for (orig, line) in stream.iter().zip(lines.iter()) {
+            let s = serde_json::to_string(line).unwrap();
+            let parsed: ServerEvent = serde_json::from_str(&s)
+                .unwrap_or_else(|e| panic!("failed to round-trip: {s}: {e}"));
+            assert_eq!(&parsed, orig);
+        }
+    }
+
+    /// Snapshot for the client → server side: every `kind` of
+    /// `ClientEvent` with realistic fields.
+    #[test]
+    fn test_client_event_stream_snapshot() {
+        let stream = [
+            ClientEvent::Submit {
+                v: PROTOCOL_VERSION,
+                id: "c1".into(),
+                text: "hello, forge".into(),
+                attachments: vec![],
+            },
+            ClientEvent::Cancel {
+                v: PROTOCOL_VERSION,
+                id: "c2".into(),
+                target: "t1".into(),
+            },
+            ClientEvent::SelectResponse {
+                v: PROTOCOL_VERSION,
+                id: "c3".into(),
+                target: "sel-1".into(),
+                value: "anthropic".into(),
+            },
+            ClientEvent::SetBuffer {
+                v: PROTOCOL_VERSION,
+                id: "c4".into(),
+                text: "/agent forge".into(),
+            },
+            ClientEvent::Command {
+                v: PROTOCOL_VERSION,
+                id: "c5".into(),
+                name: "exit".into(),
+                args: vec![],
+            },
+        ];
+
+        let lines: Vec<serde_json::Value> = stream
+            .iter()
+            .map(|e| serde_json::to_value(e).expect("serialise"))
+            .collect();
+
+        assert_yaml_snapshot!("client_event_stream", lines);
+
+        for (orig, line) in stream.iter().zip(lines.iter()) {
+            let s = serde_json::to_string(line).unwrap();
+            let parsed: ClientEvent = serde_json::from_str(&s)
+                .unwrap_or_else(|e| panic!("failed to round-trip: {s}: {e}"));
+            assert_eq!(&parsed, orig);
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
 

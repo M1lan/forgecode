@@ -15,14 +15,19 @@ use anyhow::Result;
 /// frontend that cannot accept crossterm raw-mode input.
 ///
 /// Signal sources, in order of authority:
-/// - `FORGE_FRONTEND=comint` — set by `forge_main::main` after CLI / env
-///   resolution. This is the canonical signal.
+/// - `FORGE_FRONTEND=comint` or `FORGE_FRONTEND=json` — set by
+///   `forge_main::main` after CLI / env resolution. This is the canonical
+///   signal. Both dumb frontends route selectors through the line-prompt
+///   fallbacks below; the JSON frontend additionally emits a `select`
+///   event upstream (handled in `forge_main::frontend`), but the actual
+///   user response still arrives as a plain stdin line in the current
+///   wire format.
 /// - `INSIDE_EMACS` containing the substring `comint` — set by Emacs
 ///   `make-comint-in-buffer` and friends.
 /// - `TERM=dumb` — generic dumb-terminal escape hatch.
 pub fn is_comint() -> bool {
     if let Ok(value) = std::env::var("FORGE_FRONTEND")
-        && value == "comint"
+        && (value == "comint" || value == "json")
     {
         return true;
     }
@@ -37,6 +42,15 @@ pub fn is_comint() -> bool {
         return true;
     }
     false
+}
+
+/// Returns `true` when the active frontend is the structured JSON line
+/// protocol (`FORGE_FRONTEND=json`).
+///
+/// Used by selector adapters that want to additionally announce a
+/// `select` event on the JSON wire before prompting.
+pub fn is_json() -> bool {
+    matches!(std::env::var("FORGE_FRONTEND").as_deref(), Ok("json"))
 }
 
 /// Numbered line-prompt fallback for a single-choice selector.
@@ -299,5 +313,43 @@ mod tests {
         let actual = is_comint();
         let expected = false;
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_is_comint_true_with_forge_frontend_json() {
+        // The JSON frontend is also a dumb-terminal-class frontend that
+        // must use line-prompt fallbacks, since it cannot drive crossterm
+        // raw mode.
+        let _guard = EnvGuard::new();
+        unsafe {
+            std::env::set_var("FORGE_FRONTEND", "json");
+        }
+        let actual = is_comint();
+        let expected = true;
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_is_json_true_only_for_json_frontend() {
+        let _guard = EnvGuard::new();
+        unsafe {
+            std::env::set_var("FORGE_FRONTEND", "json");
+        }
+        assert_eq!(is_json(), true);
+    }
+
+    #[test]
+    fn test_is_json_false_for_comint_frontend() {
+        let _guard = EnvGuard::new();
+        unsafe {
+            std::env::set_var("FORGE_FRONTEND", "comint");
+        }
+        assert_eq!(is_json(), false);
+    }
+
+    #[test]
+    fn test_is_json_false_when_unset() {
+        let _guard = EnvGuard::new();
+        assert_eq!(is_json(), false);
     }
 }

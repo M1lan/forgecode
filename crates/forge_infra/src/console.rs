@@ -47,21 +47,37 @@ impl<O, E> StdConsoleWriter<O, E> {
 
 impl<O: Write + Send, E: Write + Send> ConsoleWriter for StdConsoleWriter<O, E> {
     fn write(&self, buf: &[u8]) -> io::Result<usize> {
+        // When a process-wide redirect sink is installed (e.g. the JSON
+        // frontend), route every byte through it instead of touching
+        // stdout directly. The redirect adapter is responsible for any
+        // framing (NDJSON `chunk` events, etc.).
+        if let Some(redirect) = forge_domain::redirect() {
+            return redirect.write(buf);
+        }
         let mut guard = self.stdout.lock().unwrap_or_else(|e| e.into_inner());
         guard.write(buf)
     }
 
     fn write_err(&self, buf: &[u8]) -> io::Result<usize> {
+        if let Some(redirect) = forge_domain::redirect() {
+            return redirect.write_err(buf);
+        }
         let mut guard = self.stderr.lock().unwrap_or_else(|e| e.into_inner());
         guard.write(buf)
     }
 
     fn flush(&self) -> io::Result<()> {
+        if let Some(redirect) = forge_domain::redirect() {
+            return redirect.flush();
+        }
         let mut guard = self.stdout.lock().unwrap_or_else(|e| e.into_inner());
         guard.flush()
     }
 
     fn flush_err(&self) -> io::Result<()> {
+        if let Some(redirect) = forge_domain::redirect() {
+            return redirect.flush_err();
+        }
         let mut guard = self.stderr.lock().unwrap_or_else(|e| e.into_inner());
         guard.flush()
     }

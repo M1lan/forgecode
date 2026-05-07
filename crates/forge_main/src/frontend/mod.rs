@@ -1,13 +1,23 @@
 //! Frontend abstractions for the JSON line protocol track.
 //!
 //! See [`protocol`] for the wire format used by `--frontend=json`. This
-//! module owns the protocol types and the
-//! [`console_writer::JsonConsoleWriter`] adapter that lets the existing
-//! markdown streaming pipeline emit [`protocol::ServerEvent`] frames instead
-//! of raw bytes. The full `Frontend` trait that [`crate::ui::UI`] will
-//! eventually drive lands in a follow-up commit; until then the JSON input
-//! side is handled by [`crate::input::JsonInput`] and the streaming output
-//! adapter is exercised via its unit tests.
+//! module owns:
+//!
+//! - [`protocol`] — `ClientEvent` / `ServerEvent` types and the protocol
+//!   version constant.
+//! - [`console_writer::JsonConsoleWriter`] — `ConsoleWriter` adapter that
+//!   wraps streaming-renderer byte writes into `chunk` events.
+//! - [`orchestrator::JsonFrontend`] — high-level event-emit API the UI
+//!   lifecycle calls into. One per process; held as
+//!   `Option<Arc<JsonFrontend>>` on the [`crate::ui::UI`] struct.
+//!
+//! The JSON input side lives in [`crate::input::JsonInput`] (NDJSON
+//! stdin reader) so that all four frontends (TTY, comint, JSON, future
+//! drivers) share the same `UserInput::prompt` dispatch surface.
 
 pub mod console_writer;
+pub mod orchestrator;
 pub mod protocol;
+
+pub use console_writer::JsonConsoleWriter;
+pub use orchestrator::JsonFrontend;

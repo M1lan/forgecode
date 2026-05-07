@@ -1,0 +1,60 @@
+---
+source: crates/forge_main/src/frontend/protocol.rs
+expression: lines
+---
+- agent: forge
+  conversation_id: conv-1
+  kind: ready
+  model: claude-opus-4-7
+  v: 1
+- kind: turn_start
+  turn_id: t1
+  v: 1
+- kind: reasoning
+  text: Considering the request…
+  turn_id: t1
+  v: 1
+- kind: chunk
+  stream: assistant
+  text: "Here's the answer."
+  turn_id: t1
+  v: 1
+- args:
+    path: src/lib.rs
+  kind: tool_call
+  name: read
+  tool_id: k1
+  turn_id: t1
+  v: 1
+- kind: tool_result
+  ok: true
+  summary: 100 lines
+  tool_id: k1
+  turn_id: t1
+  v: 1
+- cost: 0.0125
+  input_tokens: 1234
+  kind: usage
+  output_tokens: 56
+  turn_id: t1
+  v: 1
+- kind: turn_end
+  turn_id: t1
+  v: 1
+- kind: status
+  level: info
+  text: Saved.
+  v: 1
+- default: ""
+  kind: select
+  multi: false
+  options:
+    - anthropic
+    - openai
+  prompt: "Pick provider:"
+  sel_id: sel-1
+  v: 1
+- cause: ""
+  kind: error
+  text: session blew up
+  v: 1
