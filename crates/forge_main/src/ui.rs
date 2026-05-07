@@ -31,15 +31,15 @@ use tokio_stream::StreamExt;
 use url::Url;
 
 use crate::cli::{
-    Cli, CommitCommandGroup, ConversationCommand, ListCommand, McpCommand, SelectCommand,
-    TopLevelCommand,
+    Cli, CommitCommandGroup, ConversationCommand, FrontendMode, ListCommand, McpCommand,
+    SelectCommand, TopLevelCommand,
 };
 use crate::conversation_selector::ConversationSelector;
 use crate::display_constants::{CommandType, headers, markers, status};
 use crate::editor::ReadLineError;
 use crate::error::UIError;
 use crate::info::Info;
-use crate::input::Console;
+use crate::input::{CominInput, Console, UserInput};
 use crate::model::{AppCommand, ForgeCommandManager};
 use crate::porcelain::Porcelain;
 use crate::prompt::ForgePrompt;
@@ -107,7 +107,7 @@ pub struct UI<A: ConsoleWriter, F: Fn(ForgeConfig) -> A> {
     state: UIState,
     api: Arc<F::Output>,
     new_api: Arc<F>,
-    console: Console,
+    console: UserInput,
     command: Arc<ForgeCommandManager>,
     cli: Cli,
     spinner: SharedSpinner<A>,
@@ -276,16 +276,27 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         let api = Arc::new(f(config.clone()));
         let env = api.environment();
         let command = Arc::new(ForgeCommandManager::default());
-        let spinner = SharedSpinner::new(SpinnerManager::new(api.clone()));
+        let frontend = FrontendMode::resolve(cli.frontend);
+        let mut spinner_manager = SpinnerManager::new(api.clone());
+        if frontend.is_comint() {
+            // Suppress the animated spinner under dumb terminals — its VT
+            // cursor escapes leave garbage in comint scrollback.
+            spinner_manager.set_quiet(true);
+        }
+        let spinner = SharedSpinner::new(spinner_manager);
+        let console = match frontend {
+            FrontendMode::Tty => UserInput::Console(Box::new(Console::new(
+                env.clone(),
+                config.custom_history_path.clone(),
+                command.clone(),
+            ))),
+            FrontendMode::Comint => UserInput::Comint(CominInput::new(command.clone())),
+        };
         Ok(Self {
             state: UIState::new(env.clone()),
             api,
             new_api: Arc::new(f),
-            console: Console::new(
-                env.clone(),
-                config.custom_history_path.clone(),
-                command.clone(),
-            ),
+            console,
             cli,
             command,
             spinner,

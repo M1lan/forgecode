@@ -7,7 +7,7 @@ use clap::Parser;
 use forge_api::ForgeAPI;
 use forge_config::ForgeConfig;
 use forge_domain::TitleFormat;
-use forge_main::{Cli, Sandbox, TitleDisplayExt, TopLevelCommand, UI, tracker};
+use forge_main::{Cli, FrontendMode, Sandbox, TitleDisplayExt, TopLevelCommand, UI, tracker};
 
 /// Enables ENABLE_VIRTUAL_TERMINAL_PROCESSING on the stdout console handle.
 ///
@@ -90,10 +90,39 @@ async fn run() -> Result<()> {
     // Initialize and run the UI
     let mut cli = Cli::parse();
 
+    // Resolve the frontend mode early so dumb-terminal detection can suppress
+    // ANSI colour output before any banner / log lines are emitted. The same
+    // resolution is repeated inside `UI::init` so the choice flows into the
+    // spinner and selectors.
+    let frontend = FrontendMode::resolve(cli.frontend);
+    if frontend.is_comint() {
+        // Globally disable `colored` ANSI escapes. Comint renders bare
+        // `\x1b[1m` etc. as literal text, which destroys readability. Other
+        // styling crates (`nu_ansi_term`, `console`) are scoped to the
+        // reedline / crossterm code paths that the comint frontend never
+        // exercises.
+        colored::control::set_override(false);
+
+        // Publish the resolved mode as an env var so the selector crate
+        // (`forge_select`) can pick line-prompt fallbacks without a
+        // dependency on `forge_main`. Reading is via `env::var`; both
+        // setting and reading happen in the same process so this is safe.
+        // SAFETY: `set_var` is `unsafe` on edition 2024 because env var
+        // mutation is not thread-safe. We call it before any threads are
+        // spawned (no tokio runtime, no spinner thread, no API), so this
+        // is sound.
+        unsafe {
+            std::env::set_var("FORGE_FRONTEND", "comint");
+        }
+    }
+
     // Check if there's piped input, but skip for `forge select` since that
-    // command uses stdin for its item list.
+    // command uses stdin for its item list. Also skip under the comint
+    // frontend — comint subprocesses connect stdin to a live pipe (not a
+    // TTY), which would falsely trigger the slurp path and block forever
+    // waiting for an EOF that only arrives when the editor closes.
     let is_select = matches!(cli.subcommands, Some(TopLevelCommand::Select(_)));
-    if !is_select && !std::io::stdin().is_terminal() {
+    if !is_select && !frontend.is_comint() && !std::io::stdin().is_terminal() {
         let mut stdin_content = String::new();
         std::io::stdin().read_to_string(&mut stdin_content)?;
         let trimmed_content = stdin_content.trim();

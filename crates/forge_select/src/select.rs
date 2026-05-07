@@ -76,6 +76,41 @@ impl<T: 'static> SelectBuilder<T> {
     where
         T: std::fmt::Display + Clone,
     {
+        // Comint / dumb-terminal fallback. Must run before the
+        // `is_terminal()` bail because under comint stderr is a pipe.
+        if crate::comint::is_comint() {
+            if std::any::TypeId::of::<T>() == std::any::TypeId::of::<bool>() {
+                return prompt_confirm_as(&self.message, self.default);
+            }
+
+            if self.options.is_empty() {
+                return Ok(None);
+            }
+
+            let displays: Vec<String> = self
+                .options
+                .iter()
+                .enumerate()
+                .filter_map(|(index, item)| {
+                    if index < self.header_lines {
+                        None
+                    } else {
+                        Some(strip_ansi_codes(&item.to_string()).trim().to_string())
+                    }
+                })
+                .collect();
+
+            if displays.is_empty() {
+                return Ok(None);
+            }
+
+            let chosen = crate::comint::prompt_select_line(&self.message, &displays)?;
+            return Ok(chosen.map(|relative_index| {
+                let absolute = relative_index + self.header_lines;
+                self.options[absolute].clone()
+            }));
+        }
+
         if !std::io::stderr().is_terminal() {
             return Ok(None);
         }

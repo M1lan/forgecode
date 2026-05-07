@@ -65,6 +65,66 @@ pub struct Cli {
     /// Event to dispatch to the workflow in JSON format.
     #[arg(long, short = 'e')]
     pub event: Option<String>,
+
+    /// Frontend mode controlling how Forge talks to its terminal.
+    ///
+    /// `tty` (default) uses the full reedline-based interactive frontend with
+    /// raw mode, ANSI colours, animated spinner, and crossterm selectors.
+    ///
+    /// `comint` switches to a "dumb terminal" frontend safe for editor
+    /// subprocesses (e.g. Emacs `comint-mode`): line-buffered stdin reads,
+    /// no raw mode, no spinner animation, no ANSI escapes, and selectors
+    /// that fall back to numbered text prompts.
+    ///
+    /// When unset, comint is auto-selected when `INSIDE_EMACS` contains
+    /// `comint` or `TERM=dumb`; otherwise `tty` is used.
+    #[arg(long, value_enum)]
+    pub frontend: Option<FrontendMode>,
+}
+
+/// Selects how the CLI frontend renders output and reads input.
+///
+/// See [`Cli::frontend`] for selection semantics. New variants will be added
+/// for the JSON line protocol once Track B lands.
+#[derive(Copy, Clone, Debug, ValueEnum, Default, PartialEq, Eq)]
+#[clap(rename_all = "lower")]
+pub enum FrontendMode {
+    /// Full TTY frontend (reedline + crossterm + animated spinner + ANSI).
+    #[default]
+    Tty,
+    /// Dumb-terminal frontend for Emacs comint and similar shells.
+    Comint,
+}
+
+impl FrontendMode {
+    /// Returns `true` when the active frontend is the comint dumb-terminal
+    /// frontend. Used by selectors and the spinner to pick line-oriented
+    /// fallbacks.
+    pub fn is_comint(self) -> bool {
+        matches!(self, Self::Comint)
+    }
+
+    /// Resolves the frontend mode from the CLI flag, falling back to
+    /// environment-based auto-detection when the flag is omitted.
+    ///
+    /// Auto-detection rules:
+    /// - `INSIDE_EMACS` contains `comint` -> `Comint`
+    /// - `TERM` equals `dumb` -> `Comint`
+    /// - Otherwise -> `Tty`
+    pub fn resolve(flag: Option<FrontendMode>) -> FrontendMode {
+        if let Some(mode) = flag {
+            return mode;
+        }
+
+        let inside_emacs = std::env::var("INSIDE_EMACS").unwrap_or_default();
+        let term = std::env::var("TERM").unwrap_or_default();
+
+        if inside_emacs.contains("comint") || term == "dumb" {
+            FrontendMode::Comint
+        } else {
+            FrontendMode::Tty
+        }
+    }
 }
 
 impl Cli {
@@ -2022,5 +2082,43 @@ mod tests {
             _ => panic!("Expected Update command"),
         };
         assert!(!actual);
+    }
+
+    #[test]
+    fn test_frontend_default_is_none() {
+        let fixture = Cli::parse_from(["forge"]);
+        assert_eq!(fixture.frontend, None);
+    }
+
+    #[test]
+    fn test_frontend_flag_tty() {
+        let fixture = Cli::parse_from(["forge", "--frontend", "tty"]);
+        assert_eq!(fixture.frontend, Some(FrontendMode::Tty));
+    }
+
+    #[test]
+    fn test_frontend_flag_comint() {
+        let fixture = Cli::parse_from(["forge", "--frontend", "comint"]);
+        assert_eq!(fixture.frontend, Some(FrontendMode::Comint));
+    }
+
+    #[test]
+    fn test_frontend_mode_resolve_explicit_flag_wins() {
+        // Explicit flag should always win over env detection. We can't safely
+        // mutate the process env in a unit test (parallel test races), so this
+        // exercises only the flag-priority branch.
+        let actual = FrontendMode::resolve(Some(FrontendMode::Comint));
+        let expected = FrontendMode::Comint;
+        assert_eq!(actual, expected);
+
+        let actual = FrontendMode::resolve(Some(FrontendMode::Tty));
+        let expected = FrontendMode::Tty;
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_frontend_mode_is_comint() {
+        assert!(FrontendMode::Comint.is_comint());
+        assert!(!FrontendMode::Tty.is_comint());
     }
 }
