@@ -1,0 +1,27 @@
+---
+source: crates/forge_main/src/frontend/protocol.rs
+expression: lines
+---
+- attachments: []
+  id: c1
+  kind: submit
+  text: "hello, forge"
+  v: 1
+- id: c2
+  kind: cancel
+  target: t1
+  v: 1
+- id: c3
+  kind: select_response
+  target: sel-1
+  v: 1
+  value: anthropic
+- id: c4
+  kind: set_buffer
+  text: /agent forge
+  v: 1
+- args: []
+  id: c5
+  kind: command
+  name: exit
+  v: 1
