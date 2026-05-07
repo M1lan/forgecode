@@ -1,5 +1,6 @@
 use std::io::{self, BufRead, BufReader, Write as _};
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
 use forge_api::Environment;
@@ -192,26 +193,35 @@ impl CominInput {
 
 /// NDJSON line-protocol input reader for `--frontend=json`.
 ///
-/// Reads one [`ClientEvent`] per newline from stdin and translates it into
-/// an [`AppCommand`] for the surrounding event loop:
+/// Receives [`ClientEvent`]s from the [`crate::frontend::router::EventRouter`]
+/// background thread (which owns stdin) and translates each one into an
+/// [`AppCommand`] for the surrounding event loop:
 ///
 /// - [`ClientEvent::Submit`] → `AppCommand::Message(text)` via the same
 ///   `ForgeCommandManager::parse` that the other frontends use, so slash
 ///   commands embedded in `text` (e.g. `"/new"`) still route correctly.
 /// - [`ClientEvent::Command`] with `name == "exit"` → [`AppCommand::Exit`].
 ///   Other named commands are joined with their args and parsed.
-/// - [`ClientEvent::Cancel`] / [`ClientEvent::SelectResponse`] → currently
-///   dropped (no in-flight cancellation or selector wiring yet); the
-///   surrounding loop re-prompts. Wiring lands with the full `Frontend`
-///   refactor.
+/// - [`ClientEvent::Cancel`] → currently dropped; the surrounding loop
+///   re-prompts. Wiring lands when in-flight cancellation is plumbed.
+/// - [`ClientEvent::SelectResponse`] is never observed here — the router
+///   forwards it directly to the matching pending selector instead. The
+///   variant is kept on the translation function to preserve the exhaustive
+///   match if a future router change relaxes routing.
 /// - [`ClientEvent::SetBuffer`] → buffered and emitted as a status event
 ///   on the next prompt cycle.
 ///
-/// EOF on stdin returns [`AppCommand::Exit`]. Malformed JSON lines emit a
-/// [`ServerEvent::Error`] and re-prompt; this matches the protocol's
-/// "unknown event must not crash" rule (`docs/frontend-protocol.md`).
+/// The router thread closing the channel (e.g. on EOF) returns
+/// [`AppCommand::Exit`] from `prompt`.
 pub struct JsonInput {
     command: Arc<ForgeCommandManager>,
+    /// Receiver side of the router's prompt-event channel. Wrapped in
+    /// `Mutex<Option<...>>` because `mpsc::Receiver` is `!Sync` and the
+    /// surrounding [`UserInput`] is shared across the UI loop. The
+    /// `Option` lets us drop the receiver after EOF so subsequent
+    /// `prompt` calls return `Exit` immediately rather than blocking on
+    /// a closed channel.
+    receiver: Mutex<Option<mpsc::Receiver<ClientEvent>>>,
     /// Pending `set_buffer` payload to flush as a status event on the next
     /// prompt cycle. JSON clients are expected to mirror this back into
     /// their input buffer themselves.
@@ -219,16 +229,36 @@ pub struct JsonInput {
 }
 
 impl JsonInput {
-    /// Creates a new JSON input reader bound to the given command manager.
-    pub fn new(command: Arc<ForgeCommandManager>) -> Self {
-        Self { command, prefill: Mutex::new(None) }
+    /// Creates a new JSON input reader bound to the given command manager
+    /// and router channel.
+    pub fn new(command: Arc<ForgeCommandManager>, receiver: mpsc::Receiver<ClientEvent>) -> Self {
+        Self {
+            command,
+            receiver: Mutex::new(Some(receiver)),
+            prefill: Mutex::new(None),
+        }
     }
 
-    /// Reads [`ClientEvent`]s from stdin until one translates to an
-    /// [`AppCommand`].
+    /// Test-only constructor that builds a `JsonInput` with no upstream
+    /// router. Calling `prompt` returns `Exit` immediately. Used by
+    /// translate-only unit tests.
+    #[cfg(test)]
+    fn new_disconnected(command: Arc<ForgeCommandManager>) -> Self {
+        let (_tx, rx) = mpsc::channel();
+        // Drop tx so rx is hung up: any blocking recv returns Disconnected.
+        drop(_tx);
+        Self {
+            command,
+            receiver: Mutex::new(Some(rx)),
+            prefill: Mutex::new(None),
+        }
+    }
+
+    /// Receives [`ClientEvent`]s from the router until one translates to
+    /// an [`AppCommand`].
     ///
     /// Drains any pending pre-fill as a `Status { level: "prefill" }`
-    /// event before reading. Empty lines are skipped silently.
+    /// event before reading.
     pub async fn prompt(&self, _prompt: &mut ForgePrompt) -> anyhow::Result<AppCommand> {
         // Flush any pending prefill so the JSON client can mirror it back
         // into its input area.
@@ -241,39 +271,31 @@ impl JsonInput {
             emit_event(&event)?;
         }
 
-        let stdin = io::stdin();
-        let mut reader = BufReader::new(stdin.lock());
         loop {
-            let mut line = String::new();
-            let bytes = reader.read_line(&mut line)?;
-            if bytes == 0 {
-                // EOF — stdin closed.
-                return Ok(AppCommand::Exit);
-            }
-
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-
-            match serde_json::from_str::<ClientEvent>(trimmed) {
-                Ok(event) => {
-                    if let Some(cmd) = self.translate(event)? {
-                        return Ok(cmd);
+            // Hold the receiver lock only for the duration of one recv()
+            // so the surrounding async runtime can be polled normally.
+            let event = {
+                let mut guard = self.receiver.lock().unwrap();
+                let Some(rx) = guard.as_mut() else {
+                    return Ok(AppCommand::Exit);
+                };
+                match rx.recv() {
+                    Ok(ev) => ev,
+                    Err(_) => {
+                        // Router thread closed the channel: EOF on stdin
+                        // or fatal IO error. Drop the receiver so future
+                        // calls short-circuit.
+                        *guard = None;
+                        return Ok(AppCommand::Exit);
                     }
-                    // Event accepted but no command produced (e.g. cancel,
-                    // select_response with no in-flight selector). Loop
-                    // and read the next event.
                 }
-                Err(err) => {
-                    // Malformed JSON: emit an error event and keep reading.
-                    let mut event = ServerEvent::error(format!("invalid client event: {err}"));
-                    if let ServerEvent::Error { ref mut cause, .. } = event {
-                        *cause = trimmed.to_string();
-                    }
-                    emit_event(&event)?;
-                }
+            };
+
+            if let Some(cmd) = self.translate(event)? {
+                return Ok(cmd);
             }
+            // Event accepted but no command produced (e.g. cancel,
+            // set_buffer). Loop and read the next event.
         }
     }
 
@@ -375,7 +397,7 @@ mod tests {
         // tokio runtime; wrap the test in `#[tokio::test]` so a runtime is
         // available.
         let command = Arc::new(ForgeCommandManager::default());
-        let json = JsonInput::new(command);
+        let json = JsonInput::new_disconnected(command);
 
         let event = ClientEvent::Submit {
             v: PROTOCOL_VERSION,
@@ -391,7 +413,7 @@ mod tests {
     #[test]
     fn test_json_input_translate_set_buffer_consumes_silently() {
         let command = Arc::new(ForgeCommandManager::default());
-        let json = JsonInput::new(command);
+        let json = JsonInput::new_disconnected(command);
 
         let event = ClientEvent::SetBuffer {
             v: PROTOCOL_VERSION,
@@ -409,7 +431,7 @@ mod tests {
     #[test]
     fn test_json_input_translate_cancel_consumes_silently() {
         let command = Arc::new(ForgeCommandManager::default());
-        let json = JsonInput::new(command);
+        let json = JsonInput::new_disconnected(command);
 
         let event = ClientEvent::Cancel {
             v: PROTOCOL_VERSION,
@@ -423,7 +445,7 @@ mod tests {
     #[test]
     fn test_json_input_translate_select_response_consumes_silently() {
         let command = Arc::new(ForgeCommandManager::default());
-        let json = JsonInput::new(command);
+        let json = JsonInput::new_disconnected(command);
 
         let event = ClientEvent::SelectResponse {
             v: PROTOCOL_VERSION,
@@ -440,7 +462,7 @@ mod tests {
         // ForgeCommandManager parses "/exit" → AppCommand::Exit. Verify
         // that ClientEvent::Command{name:"exit"} routes the same way.
         let command = Arc::new(ForgeCommandManager::default());
-        let json = JsonInput::new(command);
+        let json = JsonInput::new_disconnected(command);
 
         let event = ClientEvent::Command {
             v: PROTOCOL_VERSION,
@@ -458,7 +480,7 @@ mod tests {
         // Allow clients to send `name: "/exit"` or `name: "exit"`
         // interchangeably; both should parse the same.
         let command = Arc::new(ForgeCommandManager::default());
-        let json = JsonInput::new(command);
+        let json = JsonInput::new_disconnected(command);
 
         let event = ClientEvent::Command {
             v: PROTOCOL_VERSION,
@@ -474,12 +496,47 @@ mod tests {
     #[test]
     fn test_json_input_set_buffer_stores_pending() {
         let command = Arc::new(ForgeCommandManager::default());
-        let json = JsonInput::new(command);
+        let json = JsonInput::new_disconnected(command);
 
         json.set_buffer("hello".into());
 
         let actual = json.prefill.lock().unwrap().clone();
         let expected = Some("hello".to_string());
+        assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn test_json_input_prompt_returns_exit_on_channel_close() {
+        // Construct an explicitly-closed channel. The first `prompt`
+        // call should observe the disconnect and return `Exit` rather
+        // than blocking.
+        let (tx, rx) = mpsc::channel::<ClientEvent>();
+        drop(tx);
+        let command = Arc::new(ForgeCommandManager::default());
+        let json = JsonInput::new(command, rx);
+        let mut prompt = ForgePrompt::new(std::path::PathBuf::from("/"), Default::default());
+
+        let actual = json.prompt(&mut prompt).await.unwrap();
+        let expected = AppCommand::Exit;
+        assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn test_json_input_prompt_translates_submit_from_router() {
+        let (tx, rx) = mpsc::channel::<ClientEvent>();
+        tx.send(ClientEvent::Submit {
+            v: PROTOCOL_VERSION,
+            id: "c1".into(),
+            text: "hello".into(),
+            attachments: vec![],
+        })
+        .unwrap();
+        let command = Arc::new(ForgeCommandManager::default());
+        let json = JsonInput::new(command, rx);
+        let mut prompt = ForgePrompt::new(std::path::PathBuf::from("/"), Default::default());
+
+        let actual = json.prompt(&mut prompt).await.unwrap();
+        let expected = AppCommand::Message("hello".into());
         assert_eq!(actual, expected);
     }
 }
