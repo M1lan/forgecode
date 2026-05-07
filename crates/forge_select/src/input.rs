@@ -62,6 +62,14 @@ impl InputBuilder {
         // Comint fallback: avoid rustyline's raw-mode editor under dumb
         // terminals. Plain stdin read with default-value handling.
         if crate::comint::is_comint() {
+            // Under the JSON frontend, route through the installed
+            // [`SelectorBackend`] so the response arrives as a typed
+            // `select_response` event rather than as a stdin line.
+            if let Some(backend) =
+                crate::comint::is_json().then(crate::backend::selector_backend).flatten()
+            {
+                return backend.input(&self.message, self.default.as_deref(), self.allow_empty);
+            }
             return crate::comint::prompt_input_line(
                 &self.message,
                 self.default.as_deref(),

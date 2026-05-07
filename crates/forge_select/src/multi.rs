@@ -41,6 +41,22 @@ impl<T> MultiSelectBuilder<T> {
                 .map(|item| strip_ansi_codes(&item.to_string()).trim().to_string())
                 .collect();
 
+            // Under the JSON frontend, dispatch through the installed
+            // [`SelectorBackend`] which carries proper multi-select via
+            // the `select_response` event (comma-separated values).
+            if let Some(backend) =
+                crate::comint::is_json().then(crate::backend::selector_backend).flatten()
+            {
+                let defaults = vec![false; displays.len()];
+                let chosen = backend.multi(&self.message, &displays, &defaults)?;
+                return Ok(chosen.map(|indices| {
+                    indices
+                        .into_iter()
+                        .filter_map(|i| self.options.get(i).cloned())
+                        .collect()
+                }));
+            }
+
             let chosen = crate::comint::prompt_select_line(&self.message, &displays)?;
             return Ok(chosen.map(|index| vec![self.options[index].clone()]));
         }

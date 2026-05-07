@@ -35,6 +35,16 @@ impl ConfirmBuilder {
     pub fn prompt(self) -> Result<Option<bool>> {
         // Comint fallback: simple y/n line read, no rustyline raw mode.
         if crate::comint::is_comint() {
+            // Under the JSON frontend, route through the installed
+            // [`SelectorBackend`] so the response arrives as a typed
+            // `select_response` event rather than as a stdin line. The
+            // backend-less path falls through to the line-prompt
+            // fallback used by plain comint and `TERM=dumb`.
+            if let Some(backend) =
+                crate::comint::is_json().then(crate::backend::selector_backend).flatten()
+            {
+                return backend.confirm(&self.message, self.default);
+            }
             return crate::comint::prompt_confirm_line(&self.message, self.default);
         }
 
