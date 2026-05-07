@@ -104,7 +104,18 @@ impl<T: 'static> SelectBuilder<T> {
                 return Ok(None);
             }
 
-            let chosen = crate::comint::prompt_select_line(&self.message, &displays)?;
+            // Under the JSON frontend, dispatch through the installed
+            // [`SelectorBackend`] so the round trip happens via the
+            // structured `select` / `select_response` events. The
+            // backend-less path keeps the line-prompt fallback for
+            // plain comint and `TERM=dumb`.
+            let chosen = if let Some(backend) =
+                crate::comint::is_json().then(crate::backend::selector_backend).flatten()
+            {
+                backend.select(&self.message, &displays, None)?
+            } else {
+                crate::comint::prompt_select_line(&self.message, &displays)?
+            };
             return Ok(chosen.map(|relative_index| {
                 let absolute = relative_index + self.header_lines;
                 self.options[absolute].clone()

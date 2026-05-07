@@ -17,14 +17,33 @@
 //! quiet until that wiring catches up.
 #![allow(dead_code)]
 
+use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc;
+use std::time::Duration;
 
 use serde_json::Value;
 
 use super::console_writer::JsonConsoleWriter;
 use super::protocol::{PROTOCOL_VERSION, ServerEvent, TurnId};
+
+/// Shared map of pending selector responses, keyed by `sel_id`.
+///
+/// This is the same shape as [`super::router::PendingSelects`]; it
+/// lives on [`JsonFrontend`] so [`Self::request_select`] can register a
+/// one-shot sender for each `select` event before blocking on the
+/// receiver.
+type PendingSelects = Arc<Mutex<HashMap<String, mpsc::Sender<String>>>>;
+
+/// How long [`JsonFrontend::request_select`] waits for a
+/// `select_response` before giving up. The protocol does not require a
+/// response (clients may legitimately drop the user's input) so we
+/// time out instead of blocking forever. Five minutes mirrors typical
+/// LLM session-attention budgets.
+const SELECT_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Coordinates JSON wire output for `--frontend=json`.
 ///
@@ -38,6 +57,11 @@ pub struct JsonFrontend {
     next_turn: AtomicU64,
     /// Monotonic counter for server-issued select ids ("sel-1", "sel-2", …).
     next_select: AtomicU64,
+    /// Pending selector responses. Populated lazily by
+    /// [`Self::bind_pending_selects`] when the [`super::router::EventRouter`]
+    /// starts up. While `None`, selector requests fall through to a
+    /// noisy fallback rather than deadlock.
+    pending_selects: Mutex<Option<PendingSelects>>,
 }
 
 impl JsonFrontend {
@@ -52,6 +76,7 @@ impl JsonFrontend {
             writer,
             next_turn: AtomicU64::new(0),
             next_select: AtomicU64::new(0),
+            pending_selects: Mutex::new(None),
         }
     }
 
@@ -184,7 +209,6 @@ impl JsonFrontend {
     }
 
     /// Emits a `usage` event with token counts and accumulated cost.
-    #[allow(dead_code)] // Wired when usage emission lands in run_inner.
     pub fn emit_usage(
         &self,
         turn_id: &str,
@@ -221,6 +245,99 @@ impl JsonFrontend {
             default: default.into(),
         })?;
         Ok(sel_id)
+    }
+
+    /// Installs the shared pending-selects map. Called once by
+    /// [`super::router::EventRouter::spawn`] at startup. The map is
+    /// shared (rather than swapped into a fresh `Arc` each time) so
+    /// concurrent registrations from multiple selector calls remain
+    /// visible to the single reader thread that consumes them.
+    pub fn bind_pending_selects(&self, pending: PendingSelects) {
+        *self
+            .pending_selects
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(pending);
+    }
+
+    /// Emits a `select` event and blocks the calling thread until the
+    /// matching `select_response` arrives via the
+    /// [`super::router::EventRouter`].
+    ///
+    /// Returns the response value verbatim. Multi-select responses use
+    /// a comma-separated string by protocol convention. The caller is
+    /// responsible for splitting and matching against `options`.
+    ///
+    /// Times out after [`SELECT_TIMEOUT`] (5 minutes) with an
+    /// [`io::ErrorKind::TimedOut`] error to prevent permanent
+    /// deadlocks if a client crashes mid-selector. The pending entry
+    /// is cleaned up on timeout so a late response cannot leak into a
+    /// future selector with the same id.
+    pub fn request_select(
+        &self,
+        prompt: &str,
+        options: Vec<String>,
+        multi: bool,
+        default: &str,
+    ) -> io::Result<Option<String>> {
+        let pending = self
+            .pending_selects
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .ok_or_else(|| {
+                io::Error::other("selector backend invoked before EventRouter::spawn")
+            })?;
+
+        let sel_id = self.next_select_id();
+        let (sender, receiver) = mpsc::channel::<String>();
+        pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(sel_id.clone(), sender);
+
+        // Emit the event under the same writer mutex everything else
+        // uses, so it never interleaves with chunk/tool/status output.
+        let emit_result = self.writer.emit(&ServerEvent::Select {
+            v: PROTOCOL_VERSION,
+            sel_id: sel_id.clone(),
+            prompt: prompt.to_string(),
+            options,
+            multi,
+            default: default.to_string(),
+        });
+        if emit_result.is_err() {
+            // Clean up before propagating so a future select with the
+            // same id (unlikely but possible after counter wrap) cannot
+            // collide.
+            pending
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&sel_id);
+            return emit_result.map(|_| None);
+        }
+
+        match receiver.recv_timeout(SELECT_TIMEOUT) {
+            Ok(value) => Ok(Some(value)),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                pending
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&sel_id);
+                Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!("no select_response for {sel_id} within {SELECT_TIMEOUT:?}"),
+                ))
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                // Reader thread exited (EOF on stdin). Treat as user
+                // cancellation.
+                pending
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&sel_id);
+                Ok(None)
+            }
+        }
     }
 }
 

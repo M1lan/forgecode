@@ -1,3 +1,4 @@
+mod backend;
 mod comint;
 mod confirm;
 mod input;
@@ -6,6 +7,9 @@ mod preview;
 mod select;
 mod widget;
 
+pub use backend::{
+    SelectorBackend, clear_selector_backend, install_selector_backend, selector_backend,
+};
 pub use comint::{is_comint, is_json};
 pub use input::InputBuilder;
 pub use multi::MultiSelectBuilder;
