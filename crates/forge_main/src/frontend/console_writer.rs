@@ -100,9 +100,15 @@ impl ConsoleWriter for JsonConsoleWriter {
     /// The `io::Write` contract requires returning the number of bytes
     /// consumed from `buf`, which is `buf.len()` here regardless of how
     /// the framed event is sized — we always consume the whole input.
+    ///
+    /// When no turn is active (e.g. startup banners, init titles, post-turn
+    /// summaries) the bytes are framed as a `status { level: "info" }`
+    /// event rather than dropped or converted to an error. This keeps
+    /// every byte that *would* have hit stdout in TTY mode visible to
+    /// the JSON consumer, just on an out-of-band channel.
     fn write(&self, buf: &[u8]) -> io::Result<usize> {
         let text = strip_ansi(buf);
-        if text.is_empty() {
+        if text.trim().is_empty() {
             return Ok(buf.len());
         }
         let mut inner = self.inner.lock().unwrap();
@@ -115,10 +121,10 @@ impl ConsoleWriter for JsonConsoleWriter {
                 "text": text,
             }),
             None => json!({
-                "kind": "error",
+                "kind": "status",
                 "v": PROTOCOL_VERSION,
-                "text": "chunk emitted with no active turn",
-                "cause": text,
+                "level": "info",
+                "text": text,
             }),
         };
         writeln!(inner.sink, "{value}")?;
@@ -289,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write_with_no_turn_emits_error_event() {
+    fn test_write_with_no_turn_emits_status_event() {
         let (sink, captured) = make_sink();
         let writer = JsonConsoleWriter::new(sink);
 
@@ -297,8 +303,9 @@ mod tests {
 
         let lines = captured_lines(&captured);
         assert_eq!(lines.len(), 1);
-        assert_eq!(lines[0]["kind"], "error");
-        assert_eq!(lines[0]["cause"], "orphan");
+        assert_eq!(lines[0]["kind"], "status");
+        assert_eq!(lines[0]["level"], "info");
+        assert_eq!(lines[0]["text"], "orphan");
     }
 
     #[test]
