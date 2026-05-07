@@ -59,6 +59,16 @@ impl InputBuilder {
     ///
     /// Returns an error if rustyline fails to initialise or read input.
     pub fn prompt(self) -> Result<Option<String>> {
+        // Comint fallback: avoid rustyline's raw-mode editor under dumb
+        // terminals. Plain stdin read with default-value handling.
+        if crate::comint::is_comint() {
+            return crate::comint::prompt_input_line(
+                &self.message,
+                self.default.as_deref(),
+                self.allow_empty,
+            );
+        }
+
         // Bail immediately when stdin is not a terminal to prevent the process
         // from blocking indefinitely on a detached or non-interactive session.
         if !std::io::stdin().is_terminal() {

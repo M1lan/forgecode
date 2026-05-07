@@ -33,6 +33,11 @@ impl ConfirmBuilder {
     /// - `Ok(None)` - User cancelled (EOF / Ctrl+D / Ctrl+C)
     /// - `Err(...)` - If the prompt fails
     pub fn prompt(self) -> Result<Option<bool>> {
+        // Comint fallback: simple y/n line read, no rustyline raw mode.
+        if crate::comint::is_comint() {
+            return crate::comint::prompt_confirm_line(&self.message, self.default);
+        }
+
         let hint = match self.default {
             Some(true) => "Y/n".to_string(),
             Some(false) => "y/N".to_string(),

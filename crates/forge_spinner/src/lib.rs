@@ -213,6 +213,14 @@ pub struct SpinnerManager<P: ConsoleWriter> {
     word_index: Option<usize>,
     message: Option<String>,
     printer: Arc<P>,
+    /// When `true`, all spinner animation is suppressed and `start`/`stop`
+    /// become no-ops aside from elapsed-time bookkeeping.
+    ///
+    /// Used by the comint frontend (and any other dumb-terminal mode) to
+    /// avoid leaving VT cursor-movement escape garbage in the host editor's
+    /// scrollback. Output via `write_ln` / `ewrite_ln` continues to work and
+    /// emits plain newline-terminated text.
+    quiet: bool,
 }
 
 impl<P: ConsoleWriter + 'static> SpinnerManager<P> {
@@ -224,12 +232,29 @@ impl<P: ConsoleWriter + 'static> SpinnerManager<P> {
             word_index: None,
             message: None,
             printer,
+            quiet: false,
         }
+    }
+
+    /// Toggles quiet mode. When set, the spinner animation is suppressed
+    /// (no ticks, no escape codes), but `write_ln` / `ewrite_ln` continue to
+    /// emit plain output.
+    ///
+    /// Intended for dumb-terminal frontends (e.g. Emacs comint-mode) where
+    /// cursor-movement escapes leak as literal text into scrollback.
+    pub fn set_quiet(&mut self, quiet: bool) {
+        self.quiet = quiet;
     }
 
     /// Start the spinner with a message
     pub fn start(&mut self, message: Option<&str>) -> Result<()> {
         self.stop(None)?;
+
+        if self.quiet {
+            // Quiet mode: skip animation entirely. Future tooling (Track B)
+            // may emit a structured `status` event here instead.
+            return Ok(());
+        }
 
         let words = [
             "Thinking",
@@ -539,5 +564,31 @@ mod tests {
         let actual = format_elapsed_time(Duration::ZERO);
         let expected = "00s";
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_spinner_quiet_mode_skips_animation() {
+        let mut fixture_spinner = fixture_spinner();
+        fixture_spinner.set_quiet(true);
+
+        // start() must not allocate an ActiveSpinner in quiet mode.
+        fixture_spinner.start(Some("Thinking")).unwrap();
+        assert!(fixture_spinner.spinner.is_none());
+
+        // stop() should still succeed and remain a no-op for the animation.
+        fixture_spinner.stop(None).unwrap();
+        assert!(fixture_spinner.spinner.is_none());
+    }
+
+    #[test]
+    fn test_spinner_quiet_can_be_toggled() {
+        let mut fixture_spinner = fixture_spinner();
+        assert!(!fixture_spinner.quiet);
+
+        fixture_spinner.set_quiet(true);
+        assert!(fixture_spinner.quiet);
+
+        fixture_spinner.set_quiet(false);
+        assert!(!fixture_spinner.quiet);
     }
 }

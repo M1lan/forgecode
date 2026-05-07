@@ -26,6 +26,25 @@ impl<T> MultiSelectBuilder<T> {
     where
         T: std::fmt::Display + Clone,
     {
+        // Comint fallback: degrade multi-select to a single-pick line prompt.
+        // Multi-pick over a dumb terminal would require a richer protocol
+        // (Track B's `select_response` event); for v1 a single choice is the
+        // safest predictable behaviour.
+        if crate::comint::is_comint() {
+            if self.options.is_empty() {
+                return Ok(None);
+            }
+
+            let displays: Vec<String> = self
+                .options
+                .iter()
+                .map(|item| strip_ansi_codes(&item.to_string()).trim().to_string())
+                .collect();
+
+            let chosen = crate::comint::prompt_select_line(&self.message, &displays)?;
+            return Ok(chosen.map(|index| vec![self.options[index].clone()]));
+        }
+
         if !std::io::stderr().is_terminal() {
             return Ok(None);
         }
