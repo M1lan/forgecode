@@ -11,7 +11,20 @@
 
 ---
 
-## Working Directories
+## Status (revised 2026-05-08)
+
+| Track | State | Notes |
+|---|---|---|
+| **A — comint frontend** | ✅ **shipped** | Branch `emacs-native-frontend-track-a`, commits `203427cfc` and `d08ad2d42`. Verified end‑to‑end inside a real Emacs `comint-mode` buffer (banner / `/exit` / EOF / empty lines / piped stdin). |
+| **B — JSON line protocol** | ✅ **shipped (behind `--unstable`)** | Same branch, commits `f5b336d43`, `5f16299e7`, `785ae4916`. Protocol v1, tool events, usage events, native selector round‑trip. 2621 workspace tests green. |
+| **C — Emacs dynamic module** | 🅿 **parked** | Decision 2026-05-08: not worth the cost yet. Track B over a local pipe is already <1 ms per event; module work is months. See §4 for a one‑page resumption guide so the next session starts in five minutes, not five days. |
+
+→ **If you are resuming this work, jump to [§7 Resumption Guide](#7-resumption-guide).** It pins down every fact you need: branch state, local paths, library versions, prior decisions, and the exact first commands to run.
+
+---
+
+
+## 0. What's actually in the way today
 
 | Path | Role | Branch |
 |---|---|---|
@@ -84,7 +97,7 @@ All tasks complete. No remaining work.
 
 ---
 
-## 2. Track B -- JSON line protocol [SHIPPED]
+## 2. Track A — "Dumb terminal" / comint mode (cheap, days) ✅ SHIPPED
 
 `forge --frontend=json --unstable` reads/writes NDJSON on stdin/stdout.
 Full wire protocol v1 with typed events: chunks, tool calls, selectors,
@@ -97,226 +110,270 @@ All tasks complete. Protocol is stable behind `--unstable` flag.
 
 ---
 
-## 3. Track C -- Forge as Rust dynamic module [PARKED]
+## 3. Track B — JSON‑line frontend + first‑class `forge.el` (right answer, weeks) ✅ SHIPPED (Rust side)
 
 Track B pipe latency is <1ms. No need for in-process embedding.
 Revisit only if zero-copy buffer access becomes needed.
 
 ---
 
-## 4. Track D -- Ghostty Terminal in Emacs
+## 4. Track C — Native Emacs dynamic module (nuclear, months) 🅿 PARKED
 
-### D.1 Architecture
+> **Outcome (if ever pursued)**: `forge.dylib` (a Rust cdylib built against
+> `emacs-module.h`) is loaded by Emacs. No subprocess. Elisp calls into Rust,
+> Rust calls back into Elisp via the module API. The "rewrite Forge in C and
+> integrate it into the core of Emacs" idea, modernised.
+
+### Decision (2026-05-08): park C
+
+- Track B over a local pipe already delivers structured events at sub‑ms
+  latency. There is **no measured pain** that C would solve.
+- Track C is months of FFI / async‑bridge / per‑platform CI work and erodes
+  the crash isolation that B gives for free (a Rust panic in‑module crashes
+  Emacs).
+- **Gate to revisit**: only when B is shipping in production and you hit one
+  of the *named* B‑can't‑solve problems below. Until then, C stays parked.
+
+Concrete revival triggers (any one of these is enough):
+
+- B's pipe latency exceeds 50 ms input → first chunk on your hardware. (Not
+  expected; current local‑pipe latency is < 1 ms per event.)
+- You want zero‑copy region/buffer passing between Emacs and Forge — e.g. to
+  let Forge see live edits in a buffer without a serialise → pipe → parse
+  round‑trip.
+- You want Forge state to share Emacs's address space with another tool
+  (Magit, Project.el, eglot) so they can call into Forge directly without
+  IPC.
+- Per‑process startup cost of `forge --frontend=json` becomes a problem
+  (e.g. starting a session per file becomes the dominant UX path).
 
 Embed `libghostty-vt` (Ghostty's VT-only library) into Emacs.
 
-- **C, not Zig/Rust** -- ghostling (`~/mysrc/ghostling/main.c`, 1604 lines)
-  proves the full API is consumable from C. No FFI bridge needed.
-- **Static link** -- `libghostty-vt.a` (7.5 MB, zero runtime deps except
-  CoreFoundation on macOS).
-- **Two phases**: dynamic module first (fast iteration), then migrate into
-  Emacs source tree (DEFUN macros, configure.ac).
+- Use the [`emacs` crate](https://crates.io/crates/emacs) (currently 0.21.0,
+  March 2026; supports Emacs 28+, including 31.0.50). One call:
+  `#[emacs::module]` on a `fn init(&Env) -> Result<()>` produces a working
+  dynamic module.
+- New crate `crates/forge_emacs/` (cdylib) re‑exporting a small surface:
+  `(forge-init)`, `(forge-submit STRING)`, `(forge-cancel)`,
+  `(forge-set-callback FN)`. Internally drives `forge_api` (the same library
+  the JSON frontend already drives). The JSON frontend in `forge_main`
+  becomes the reference embedding; `forge_emacs` is a second one.
+- Streaming via Elisp callbacks. Module callbacks run on the Emacs main
+  thread, so the Tokio runtime lives on a background OS thread and pushes
+  `ServerEvent`s through an `mpsc` into a polling timer or, preferably, a
+  `make-pipe-process` sink whose filter funcalls back into elisp on the
+  main thread. The `ServerEvent` shape is already defined in
+  `crates/forge_main/src/frontend/protocol.rs` — reuse it verbatim.
+- Panic safety: every `#[defun]` boundary wraps its body in
+  `std::panic::catch_unwind` and converts panics into elisp errors. This is
+  one helper macro, not a per‑function cost.
 
-### D.2 Phase 1 -- Standalone Dynamic Module [COMPLETE]
+### C.2 Why C is hard (read before un‑parking)
 
-| Deliverable | Location | Lines | Status |
-|---|---|---|---|
-| C module | `~/mysrc/emacs-ghostty-module/ghostty-term-module.c` | 1074 | Built, 2x reviewed, all 29 issues fixed |
-| Elisp mode | `~/mysrc/emacs-ghostty-module/ghostty-term.el` | 852 | Written, reviewed, byte-compiled clean |
-| Makefile | `~/mysrc/emacs-ghostty-module/Makefile` | 61 | macOS + Linux |
-| Compiled | `~/.emacs.d/lisp/ghostty-term-module.dylib` | 1.5 MB | Static-linked, zero runtime deps |
-| Installed | `~/.emacs.d/lisp/ghostty-term.el` | 852 | Ready to load |
+- **Build complexity**: dynamic modules ship as `.so`/`.dylib`/`.dll` per
+  platform. Per‑platform CI (macOS arm64 + x86, Linux x86_64, Windows) is
+  table stakes. Cross‑compilation needs the right `emacs-module.h` per
+  target.
+- **Crash isolation gone**: a Rust panic in the module can take Emacs with
+  it. Subprocess in B is naturally isolated.
+- **Rust async + Emacs main thread**: tokio + module callbacks is doable but
+  fiddly; you'll re‑invent half of `make-process`'s lifecycle.
+- **All of Forge's deps come along**: rustls, hyper, hickory‑dns, etc., all
+  loaded into Emacs's address space. Surface area for breakage explodes.
 
-**Quality:**
+### C.3 First‑touch checklist (when un‑parked)
 
-| Metric | Value |
+Order matters. Each step is a discrete, atomic commit; expect 0.5–1 day each.
+
+1. **Scaffold**: `crates/forge_emacs/` with `Cargo.toml`
+   (`crate-type = ["cdylib"]`, depends on `emacs = "0.21"`),
+   `src/lib.rs` containing `emacs::plugin_is_GPL_compatible!()`,
+   `#[emacs::module(name = "forge")]`, and one trivial `#[defun]
+   forge-version() -> String`. Verify it builds: `cargo build -p forge_emacs`
+   produces `target/debug/libforge_emacs.dylib`.
+2. **Smoke test the module loads**: from Emacs,
+   `(module-load "/abs/path/libforge_emacs.dylib") (forge-version) ⇒ "..."`.
+3. **Panic guard**: helper macro that wraps each `#[defun]` body in
+   `catch_unwind` and converts panics to `env.signal('forge-error msg)`.
+   Add a test `#[defun] forge-test-panic` that always panics; assert Emacs
+   sees a structured error, not a crash.
+4. **Decision: async bridge**. Recommended: `make-pipe-process` (Emacs
+   feeds the pipe FD; Rust writes serialised `ServerEvent`s to it; an
+   elisp filter funcalls registered handlers on the main thread). Avoids
+   timer polling latency. Document the choice in `docs/track-c-design.md`.
+5. **Wire `(forge-submit STRING)`** to `forge_api` and stream
+   `ServerEvent`s through the chosen bridge. At this point you have a
+   working in‑module turn — Track B's elisp client can now run on the
+   module instead of a subprocess by changing one constructor.
+6. **CI matrix**: GitHub Actions builds for macOS arm64, macOS x86_64,
+   Linux x86_64, Windows x86_64. Each artifact is the platform `.dylib` /
+   `.so` / `.dll`.
+7. **Promote**: cut a release that ships both the `forge` binary (B) and
+   the loadable module (C). Track B remains the default; C is opt‑in for
+   users who want zero‑subprocess overhead.
+
+### C.4 Local environment captured for resumption
+
+| Fact | Value |
 |---|---|
-| Review rounds | 2 (critic + code-reviewer each) |
-| Issues found/fixed | 29/29 |
-| Compiler warnings | 0 |
-| Byte-compile warnings | 0 |
-| Integration tests | 31/31 pass |
-| Render perf (120x40) | 0.01 ms (500x under 5ms target) |
+| Emacs runtime | 31.0.50 (`emacs-plus@31` from `~/mysrc/homebrew-emacs-plus/`) |
+| `module-file-suffix` | `.dylib` (macOS arm64) |
+| `exec-directory` | `/opt/homebrew/Cellar/emacs-plus@31/31.0.50/libexec/emacs/31.0.50/aarch64-apple-darwin25.1.0/` |
+| `emacs-module.h` (system) | `/opt/homebrew/include/emacs-module.h` and `/opt/homebrew/Cellar/emacs-plus@31/31.0.50/include/emacs-module.h` |
+| `emacs-module.h` (source) | `~/mysrc/emacs/src/emacs-module.h` |
+| Rust `emacs` crate | `0.21.0` (March 2026), API stable since 0.18 |
+| Forge user config | `~/.emacs.d/lisp/forge-*.el` (existing `forge-code.el` v1.0.0 already wraps `eat`; the C module would *replace* its `eat` backend, not greenfield) |
 
-**C Module API (14 functions):**
-
-| Function | Purpose |
-|---|---|
-| `ghostty-term--version` | Module version string |
-| `ghostty-term--init` | Create terminal + PTY (COLS ROWS) -> handle |
-| `ghostty-term--destroy` | Teardown + cleanup |
-| `ghostty-term--pty-fd` | Get master PTY fd |
-| `ghostty-term--alive-p` | Check child process |
-| `ghostty-term--write` | Send bytes to PTY |
-| `ghostty-term--process` | Drain PTY + update VT state |
-| `ghostty-term--resize` | Resize terminal + PTY |
-| `ghostty-term--render` | Extract dirty rows: (ROW-IDX TEXT . FACE-VEC) |
-| `ghostty-term--cursor` | Cursor (X Y VISIBLE STYLE) |
-| `ghostty-term--scroll` | Viewport scrollback |
-| `ghostty-term--key` | Encode key event -> PTY |
-| `ghostty-term--check-child` | Poll child exit code |
-
-**Elisp Features:**
-- `ghostty-term-mode` derived from `special-mode`
-- 60fps timer render loop with dirty-row optimization
-- RLE face batching for TrueColor (per-cell fg/bg RGB)
-- Face cache with 4096-entry eviction
-- Full Emacs event -> GhosttyKey code translation
-- Cursor overlay (block/bar/underline)
-- Resize via `window-size-change-functions` with ref-counting
-- Scrollback via mouse wheel
-- Bracketed paste (`C-c C-y`)
-- `C-c` prefix: C-k destroy, C-c interrupt, C-z suspend
-
-### D.3 Phase 1 Tasks
-
-- [x] Build libghostty-vt: `zig build lib-vt` -> 7.5 MB `.a`
-- [x] Create module project: `~/mysrc/emacs-ghostty-module/`
-- [x] Write `ghostty-term-module.c` (1074 lines, 14 functions)
-- [x] Compile: static-linked 1.5 MB `.dylib`, zero warnings
-- [x] Smoke test: full lifecycle verified in `emacs --batch`
-- [x] Code review round 1: 15 issues found and fixed (C module)
-- [x] Re-verify: 16 tests pass (functional + error paths)
-- [x] Performance benchmark: 0.01 ms/render
-- [x] Write `ghostty-term.el` (852 lines)
-- [x] Code review round 2: 14 issues found and fixed (elisp + C)
-- [x] Byte-compile clean, 31/31 integration tests pass
-- [x] Installed to `~/.emacs.d/lisp/`
-- [ ] **Interactive test: restart Emacs, `M-x ghostty-term`, verify colors/input/resize**
-- [ ] Add mouse click/drag support (mouse encoder)
-- [ ] Add CJK/wide-character face alignment
-
-### D.4 Phase 2 -- Compile into Emacs Source Tree
-
-Convert the dynamic module to native DEFUN-style C compiled directly
-into the Emacs binary. See `~/mysrc/emacs/plans/2026-05-08-ghostty-term-emacs-integration-v1.md`
-for the detailed Emacs-side plan.
-
-Key conversions: `env->make_integer` -> `make_fixnum`, `emacs_value` ->
-`Lisp_Object`, `emacs_module_init` -> `syms_of_ghostty_term`, etc.
-
-Build integration follows the xwidgets/tree-sitter pattern:
-`--with-ghostty-term` flag, `HAVE_GHOSTTY_TERM` define, conditional `.o`.
-
-**Phase 2 Tasks:**
-
-- [ ] Create `~/mysrc/emacs/src/ghostty-term.c` (DEFUN conversion)
-- [ ] Create `~/mysrc/emacs/src/ghostty-term.h`
-- [ ] Patch `configure.ac`: `--with-ghostty-term`, `HAVE_GHOSTTY_TERM`
-- [ ] Patch `src/Makefile.in`: conditional `ghostty-term.o`, link `libghostty-vt.a`
-- [ ] Patch `src/emacs.c`: `syms_of_ghostty_term()`
-- [ ] Copy + adapt `ghostty-term.el` to `lisp/ghostty-term.el`
-- [ ] `./configure --with-ghostty-term && make` succeeds
-- [ ] `src/emacs -Q --eval '(ghostty-term)'` works
-- [ ] `htop`, `vim` work inside the terminal
-- [ ] `make check` has no regressions
-- [ ] Building WITHOUT `--with-ghostty-term` still works
-
-### D.5 Key Decisions
-
-- C, not Zig/Rust (ghostling proves the API)
-- Static link `libghostty-vt.a` (zero deps)
-- Render in elisp (crash isolation), escalate to C if needed
-- PTY in C via `forkpty()` (same as ghostling)
-- Deferred module loading (Phase 1)
-- Pre-built `.a` for Phase 2 (no Zig dep in Emacs build itself)
-
-### D.6 Risks
-
-| Risk | Mitigation |
-|---|---|
-| libghostty-vt API instability | Pin to commit; headers say "WIP" |
-| Zig build dep | Pre-built archive; Zig only needed to rebuild |
-| DEFUN conversion bugs | Keep dynamic module working in parallel |
-
-### D.7 Known Deferred Issues
-
-- PTY write-back EAGAIN buffering (rare)
-- Async child reaping (current 500ms sync block on destroy)
-- Shifted punctuation via Kitty keyboard protocol
-- Integer-packed face cache keys (perf micro-optimization)
 
 ---
 
 ## 5. Track E -- forge.el Two-Buffer UX
 
-### E.1 Goal
+These were uncontroversial cleanups Track A needed and B/C inherit. **All five
+landed during A+B.**
 
-`M-x forge-chat` opens an ERC-style two-buffer layout consuming Track B's
-`--frontend=json`. Output buffer (read-only, markdown-fontified, tool calls
-as collapsible blocks) + input buffer (full Emacs editing, `C-c C-c` send).
-
-### E.2 Relationship to Existing Elisp
-
-Extends existing `forge-code.el` v1.0.0 at `~/.emacs.d/lisp/forge-code.el`.
-Does NOT greenfield -- builds on session management, agent cycling, and
-keybinding infrastructure already there.
-
-### E.3 Tasks
-
-- [ ] Create `forge-chat.el` extending `forge-code.el`
-- [ ] Output buffer: `forge-chat-output-mode` (special-mode, markdown faces)
-- [ ] Input buffer: `forge-chat-input-mode` (text-mode, `C-c C-c` send)
-- [ ] Process management: `make-process` with `--frontend=json`
-- [ ] NDJSON parser: process filter splits lines, dispatches events
-- [ ] Chunk events -> append to output with markdown fontification
-- [ ] Tool call events -> collapsible overlays with file link buttons
-- [ ] Select events -> `completing-read` or transient menu
-- [ ] Usage events -> mode-line tokens/cost display
-- [ ] History ring: `M-p`/`M-n` for previous/next submissions
-- [ ] Window layout: side-window for input (5 lines bottom)
-- [ ] Integration with existing `forge-code-*` keybindings
+1. ✅ **Hoist input behind a trait.** `console` field on `UI` is now a
+   `UserInput` enum (`Console` / `CominInput` / `JsonInput`) selected by
+   `FrontendMode` at startup. See `crates/forge_main/src/input.rs`.
+2. ✅ **Hoist selector behind a trait.** `forge_select` exposes
+   `SelectorBackend` with `select` / `multi` / `input` / `confirm`; per‑frontend
+   impls register via `install_selector_backend`. The TTY path uses the
+   crossterm widget; comint and JSON use the line‑prompt fallback or the
+   `JsonSelectorBackend` respectively. See `crates/forge_select/src/backend.rs`.
+3. ✅ **Tame ANSI colour at one switch.** `colored::control::set_override(false)`
+   is set once in `crates/forge_main/src/main.rs` when
+   `frontend.is_dumb()` is true.
+4. ✅ **`Spinner` → quiet mode.** `SpinnerManager::set_quiet(true)` makes
+   `start`/`stop` no‑ops while `write_ln`/`ewrite_ln` still work; selected at
+   construction in `UI::init`. See `crates/forge_spinner/src/lib.rs`.
+5. ⏸ **Document the existing `--prompt` + `--conversation-id` pattern** in
+   `docs/`. Skipped — `--frontend=comint` and `--frontend=json` make the
+   per‑turn workaround unnecessary, and the JSON wire is already documented
+   at `docs/frontend-protocol.md`.
 
 ---
 
 ## 6. Track F -- Homebrew Formula Integration
 
-### F.1 Goal
-
-Modify `~/mysrc/homebrew-emacs-plus/` formula for `emacs-plus@mymain` to:
-
-1. Build and install `libghostty-vt.a` (from ghostty source)
-2. Compile Emacs with `--with-ghostty-term` (Track D Phase 2)
-3. Install the `forge` binary alongside Emacs
-4. Install `ghostty-term.el` and `forge-chat.el` to site-lisp
-
-### F.2 Dependencies
-
-- Track D Phase 2 complete (ghostty-term compiled into Emacs)
-- Track E complete (forge-chat.el)
-- Zig 0.15.x as build dependency (for libghostty-vt)
-
-### F.3 Tasks
-
-- [ ] Add Zig build dep to formula
-- [ ] Add build step: `zig build lib-vt` in ghostty source
-- [ ] Pass `--with-ghostty-term` to Emacs configure
-- [ ] Pass `-I` / `-L` flags for ghostty headers and lib
-- [ ] Install forge binary to `#{prefix}/bin/`
-- [ ] Install elisp to `#{prefix}/share/emacs/site-lisp/`
-- [ ] Test: `brew install emacs-plus@mymain` from scratch
+- **Gate A → B**: ✅ both shipped. Used in production via comint;
+  `--frontend=json` wire is ready for an editor client to consume.
+- **Gate B → C**: 🅿 not triggered. Local‑pipe latency for B is < 1 ms per
+  event; no measured pain. C revisited only on the named triggers in §4.
 
 ---
 
-## 7. Future: TOON Encoding (low priority)
+## 7. Resumption Guide
 
-TOON (`~/mysrc/toon-spec/`, `~/mysrc/toon/`) is an alternative structured
-format. Consider as optional content-encoding inside the JSONL envelope for
-heavy payloads (tool results, batch file listings). Evaluate after Track E
-ships and real usage data exists.
+Read this section first when you next sit down to this work. Everything you
+need to remember is here.
 
-JSONL remains the default wire protocol. TOON would be a `content-encoding`
-header within the JSONL envelope, not a replacement.
+### 7.1 Where the work lives
 
----
+| Repo / path | Contents |
+|---|---|
+| `~/mysrc/forgecode/` | This repo. Branch `emacs-native-frontend-track-a` carries A + B. |
+| `~/mysrc/emacs/` | Emacs source. `src/emacs-module.h` is the FFI header for Track C. |
+| `~/mysrc/homebrew-emacs-plus/` | Homebrew formula for `emacs-plus@31`. The `--with-native-comp` build is what's running. |
+| `~/.emacs.d/` | The user's Emacs config. `lisp/forge-*.el` already contains a Forge session manager (`forge-code.el` v1.0.0) that today wraps `eat` — see §7.4 below. |
 
-## 8. Completion Criteria
+### 7.2 Branch state (commit walk)
 
-The project is **done** when:
+Branch: `emacs-native-frontend-track-a` (5 commits ahead of `mymain`).
 
-1. `./configure --with-ghostty-term && make` builds Emacs with Ghostty terminal
-2. `M-x ghostty-term` opens a production-quality terminal (colors, Unicode, resize)
-3. `M-x forge-chat` opens a two-buffer Forge UI (Track B JSON protocol)
-4. `brew install emacs-plus@mymain` does all of the above from scratch
-5. `htop`, `vim`, `forge` all work inside the Ghostty terminal
-6. Standard Emacs `make check` passes with zero regressions
+```
+785ae4916 feat(forge_main,forge_select): wire native selector round-trip + emit_usage  ← Track B selector + usage
+5f16299e7 feat(forge_main): wire json frontend lifecycle and chunk redirect            ← Track B lifecycle wiring
+f5b336d43 feat(forge_main): json frontend foundation (protocol + adapters)             ← Track B foundation
+d08ad2d42 fix(forge_main): skip hydrate_caches under comint frontend                   ← Track A polish
+203427cfc feat(forge_main): comint frontend mode for Emacs and dumb terminals          ← Track A
+```
+
+Status: clean working tree, 2621 workspace tests pass, clippy clean.
+
+### 7.3 What ships today (CLI surface)
+
+```
+forge --frontend=tty                  # default, unchanged behaviour
+forge --frontend=comint               # for Emacs comint-mode / dumb terminals
+forge --frontend=json --unstable      # NDJSON line protocol; --unstable required
+INSIDE_EMACS=*comint* forge           # auto-selects comint
+TERM=dumb forge                       # auto-selects comint
+```
+
+Wire format reference: `docs/frontend-protocol.md`.
+
+### 7.4 Existing elisp surface (don't greenfield)
+
+The user already has `~/.emacs.d/lisp/forge-*.el`:
+
+```
+forge-agent-client.el     forge-orchestration.el
+forge-code.el             forge-prompt.el
+forge-conversations.el    forge-reply.el
+forge-integration.el      forge-skills.el
+forge-modeline.el         forge-transient.el
+```
+
+`forge-code.el` v1.0.0 (header: "ForgeCode session manager for Emacs") today
+runs Forge inside an `eat` terminal buffer with `*forge:<agent>:<project>*`
+naming and a `C-c F` prefix. **Any future elisp work (`forge-comint.el`,
+`forge.el` for Track B's two-buffer UX, or the Track C module client) should
+extend this file or live alongside it — not replace it greenfield.**
+
+The natural next elisp tasks (separate from this Rust repo, all in
+`~/.emacs.d/lisp/`):
+
+- `forge-comint.el` — the consumer of Track A's `--frontend=comint`.
+  Skeleton in §2 of this plan still applies. Estimated 1 evening.
+- `forge.el` — the two‑buffer ERC‑style consumer of Track B's
+  `--frontend=json`. Skeleton in §3.B.4 of this plan still applies.
+  Estimated 2–3 evenings.
+
+### 7.5 First commands when you sit back down
+
+```bash
+cd ~/mysrc/forgecode
+git checkout emacs-native-frontend-track-a
+git status                                       # should be clean
+git log --oneline -6                             # should match §7.2
+
+# Confirm both frontends still work end-to-end
+cargo build -p forge_main --bin forge
+echo '/exit' | ./target/debug/forge --frontend=comint | head -5
+printf '{"kind":"command","v":1,"id":"r1","name":"exit"}\n' \
+    | ./target/debug/forge --frontend=json --unstable
+
+# Confirm tests still green
+cargo test --workspace --lib 2>&1 | rg "test result:" | tail -5
+```
+
+If any of those fail, something rotted in main; rebase before continuing.
+
+### 7.6 Likely next session goals (pick one)
+
+1. **Land an elisp client** (`forge-comint.el` or `forge.el`) so this work is
+   actually used day‑to‑day. Highest value per hour.
+2. **Promote Track B from `--unstable` to GA**: stabilise the protocol at
+   v1, drop the `--unstable` gate, ship a release. Requires ~2 weeks of
+   dogfooding first.
+3. **Un‑park Track C** only if one of the §4 revival triggers fires.
+
+### 7.7 Decisions already locked in (don't relitigate)
+
+- **Three‑frontend axis**: tty / comint / json. No fourth. (`FrontendMode` enum
+  in `crates/forge_main/src/cli.rs:99-167`.)
+- **JSON protocol = NDJSON**, one event per line, `kind`‑tagged. v1.
+  Versioning bumped on incompatible change.
+- **JSON is opt‑in only** behind `--unstable`. Auto‑detect never selects it.
+- **Selector backend is global**, installed once at startup via
+  `forge_select::install_selector_backend`. One frontend per process.
+- **Stdin is single‑owner under JSON**: the `EventRouter` background thread
+  is the sole reader; everything else consumes via `mpsc::Receiver`.
+- **`hydrate_caches()` is skipped** under comint/json to avoid the EOF
+  shutdown race (commit `d08ad2d42`).
+- **Spinner is quiet** (no animation) under any dumb frontend, to keep
+  scrollback / wire output clean.
+- **Track C parked**, not abandoned — see §4.
+
+That's the whole context. Resume from §7.5.
+
