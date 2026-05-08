@@ -4238,12 +4238,8 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                         .as_ref()
                         .map(|id| id.as_str().to_string())
                         .unwrap_or_else(|| format!("call-{}", toolcall_result.name.as_str()));
-                    let _ = json.emit_tool_result(
-                        turn,
-                        tool_id,
-                        !toolcall_result.is_error(),
-                        summary,
-                    );
+                    let _ =
+                        json.emit_tool_result(turn, tool_id, !toolcall_result.is_error(), summary);
                 }
 
                 self.spinner.start(None)?;

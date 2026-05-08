@@ -19,10 +19,8 @@
 
 use std::collections::HashMap;
 use std::io;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 use serde_json::Value;
@@ -126,10 +124,8 @@ impl JsonFrontend {
     pub fn emit_turn_start(&self) -> io::Result<TurnId> {
         let turn_id = self.next_turn_id();
         self.writer.set_turn(Some(turn_id.clone()));
-        self.writer.emit(&ServerEvent::TurnStart {
-            v: PROTOCOL_VERSION,
-            turn_id: turn_id.clone(),
-        })?;
+        self.writer
+            .emit(&ServerEvent::TurnStart { v: PROTOCOL_VERSION, turn_id: turn_id.clone() })?;
         Ok(turn_id)
     }
 
@@ -137,10 +133,8 @@ impl JsonFrontend {
     /// so any stray subsequent writes raise an error event rather than
     /// being silently mis-tagged.
     pub fn emit_turn_end(&self, turn_id: &str) -> io::Result<()> {
-        self.writer.emit(&ServerEvent::TurnEnd {
-            v: PROTOCOL_VERSION,
-            turn_id: turn_id.to_string(),
-        })?;
+        self.writer
+            .emit(&ServerEvent::TurnEnd { v: PROTOCOL_VERSION, turn_id: turn_id.to_string() })?;
         self.writer.set_turn(None);
         Ok(())
     }
@@ -164,11 +158,7 @@ impl JsonFrontend {
 
     /// Emits an `error` event tied to a specific client request id.
     #[allow(dead_code)] // Wired when client-request error paths land.
-    pub fn emit_error_for(
-        &self,
-        id: impl Into<String>,
-        text: impl Into<String>,
-    ) -> io::Result<()> {
+    pub fn emit_error_for(&self, id: impl Into<String>, text: impl Into<String>) -> io::Result<()> {
         self.writer.emit(&ServerEvent::error_for(id, text))
     }
 
@@ -346,8 +336,7 @@ mod tests {
     use std::sync::Mutex;
 
     use pretty_assertions::assert_eq;
-    use serde_json::Value;
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     use super::*;
 
@@ -373,10 +362,7 @@ mod tests {
             }
             let sink: Box<dyn io::Write + Send> = Box::new(SharedSink(captured.clone()));
             let writer = Arc::new(JsonConsoleWriter::new(sink));
-            Self {
-                frontend: JsonFrontend::new(writer),
-                captured,
-            }
+            Self { frontend: JsonFrontend::new(writer), captured }
         }
 
         fn lines(&self) -> Vec<Value> {

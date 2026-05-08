@@ -4,15 +4,13 @@
 //! line, and demultiplexes by event kind:
 //!
 //! - [`ClientEvent::Submit`] / [`ClientEvent::Command`] /
-//!   [`ClientEvent::Cancel`] / [`ClientEvent::SetBuffer`] flow into a
-//!   single MPSC channel consumed by [`crate::input::JsonInput`] in the
-//!   main UI loop.
-//! - [`ClientEvent::SelectResponse`] is matched against the pending
-//!   selector map held by [`super::JsonFrontend`] and routed to the
-//!   matching one-shot `mpsc::Sender<String>`.
-//! - Malformed JSON lines emit a [`ServerEvent::Error`] back through
-//!   the same writer the rest of the protocol uses; the reader thread
-//!   keeps going.
+//!   [`ClientEvent::Cancel`] / [`ClientEvent::SetBuffer`] flow into a single
+//!   MPSC channel consumed by [`crate::input::JsonInput`] in the main UI loop.
+//! - [`ClientEvent::SelectResponse`] is matched against the pending selector
+//!   map held by [`super::JsonFrontend`] and routed to the matching one-shot
+//!   `mpsc::Sender<String>`.
+//! - Malformed JSON lines emit a [`ServerEvent::Error`] back through the same
+//!   writer the rest of the protocol uses; the reader thread keeps going.
 //!
 //! The router is the architectural counterpart to the chunk-redirect
 //! installed by [`crate::ui::UI::init`]: chunks flow *out* through the
@@ -32,9 +30,7 @@
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader};
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 
 use super::orchestrator::JsonFrontend;
@@ -138,8 +134,7 @@ fn run(tx: PromptSender, pending: PendingSelects, frontend: Arc<JsonFrontend>) {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::sync::mpsc;
+    use std::sync::{Arc, mpsc};
     use std::time::Duration;
 
     use pretty_assertions::assert_eq;
@@ -172,10 +167,7 @@ mod tests {
         let (frontend, _buf) = frontend_with_buffer();
         let pending: PendingSelects = Arc::new(Mutex::new(HashMap::new()));
         let (sender, receiver) = mpsc::channel::<String>();
-        pending
-            .lock()
-            .unwrap()
-            .insert("sel-1".to_string(), sender);
+        pending.lock().unwrap().insert("sel-1".to_string(), sender);
 
         // Simulate the reader-thread routing logic without the real
         // stdin loop. (Same code path the integration test exercises.)

@@ -16,9 +16,9 @@
 //!
 //! # Forward compatibility
 //!
-//! - **Unknown `kind`** in either direction must produce an error event
-//!   rather than a crash. Use [`ServerEvent::Error`] for the forward channel
-//!   and reject the client event with a structured `error` event.
+//! - **Unknown `kind`** in either direction must produce an error event rather
+//!   than a crash. Use [`ServerEvent::Error`] for the forward channel and
+//!   reject the client event with a structured `error` event.
 //! - **Unknown fields** in known events are tolerated (`#[serde(default)]`
 //!   where applicable). New fields land non-breakingly.
 //!
@@ -27,9 +27,9 @@
 //! - `tracing` log output stays on the side-channel log file (see
 //!   `forge_tracker::init_tracing`). It must **not** leak to stdout in JSON
 //!   mode.
-//! - Errors from the forge process write to stderr as plain text only when
-//!   the JSON dispatch loop itself is broken (e.g. malformed line). All
-//!   recoverable errors must be reported as [`ServerEvent::Error`].
+//! - Errors from the forge process write to stderr as plain text only when the
+//!   JSON dispatch loop itself is broken (e.g. malformed line). All recoverable
+//!   errors must be reported as [`ServerEvent::Error`].
 
 use serde::{Deserialize, Serialize};
 
@@ -254,11 +254,7 @@ pub enum ServerEvent {
 
     /// Out-of-band status / progress event. `level` is `"info"`,
     /// `"warn"`, or `"error"`. Replaces the spinner under JSON mode.
-    Status {
-        v: u32,
-        level: String,
-        text: String,
-    },
+    Status { v: u32, level: String, text: String },
 
     /// Token usage / cost accounting for the current turn. Emitted at
     /// turn end (and optionally on token-count changes during streaming
@@ -315,11 +311,7 @@ impl ServerEvent {
     /// version every time.
     #[allow(dead_code)] // Used once the streaming pipeline lands.
     pub fn info_status(text: impl Into<String>) -> Self {
-        Self::Status {
-            v: PROTOCOL_VERSION,
-            level: "info".into(),
-            text: text.into(),
-        }
+        Self::Status { v: PROTOCOL_VERSION, level: "info".into(), text: text.into() }
     }
 
     /// Constructs a v1 [`Self::Error`] event tied to a specific request id.
@@ -372,10 +364,7 @@ mod snapshot_tests {
                 agent: "forge".into(),
                 model: "claude-opus-4-7".into(),
             },
-            ServerEvent::TurnStart {
-                v: PROTOCOL_VERSION,
-                turn_id: "t1".into(),
-            },
+            ServerEvent::TurnStart { v: PROTOCOL_VERSION, turn_id: "t1".into() },
             ServerEvent::Reasoning {
                 v: PROTOCOL_VERSION,
                 turn_id: "t1".into(),
@@ -408,10 +397,7 @@ mod snapshot_tests {
                 output_tokens: 56,
                 cost: 0.0125,
             },
-            ServerEvent::TurnEnd {
-                v: PROTOCOL_VERSION,
-                turn_id: "t1".into(),
-            },
+            ServerEvent::TurnEnd { v: PROTOCOL_VERSION, turn_id: "t1".into() },
             ServerEvent::Status {
                 v: PROTOCOL_VERSION,
                 level: "info".into(),
@@ -458,11 +444,7 @@ mod snapshot_tests {
                 text: "hello, forge".into(),
                 attachments: vec![],
             },
-            ClientEvent::Cancel {
-                v: PROTOCOL_VERSION,
-                id: "c2".into(),
-                target: "t1".into(),
-            },
+            ClientEvent::Cancel { v: PROTOCOL_VERSION, id: "c2".into(), target: "t1".into() },
             ClientEvent::SelectResponse {
                 v: PROTOCOL_VERSION,
                 id: "c3".into(),
@@ -519,8 +501,8 @@ mod tests {
             text: "refactor foo to bar".into(),
             attachments: vec![],
         };
-        let actual: ClientEvent = serde_json::from_str(&serde_json::to_string(&fixture).unwrap())
-            .unwrap();
+        let actual: ClientEvent =
+            serde_json::from_str(&serde_json::to_string(&fixture).unwrap()).unwrap();
         assert_eq!(actual, fixture);
     }
 
@@ -558,13 +540,9 @@ mod tests {
 
     #[test]
     fn test_client_cancel_round_trip() {
-        let fixture = ClientEvent::Cancel {
-            v: 1,
-            id: "c2".into(),
-            target: "t1".into(),
-        };
-        let actual: ClientEvent = serde_json::from_str(&serde_json::to_string(&fixture).unwrap())
-            .unwrap();
+        let fixture = ClientEvent::Cancel { v: 1, id: "c2".into(), target: "t1".into() };
+        let actual: ClientEvent =
+            serde_json::from_str(&serde_json::to_string(&fixture).unwrap()).unwrap();
         assert_eq!(actual, fixture);
     }
 
@@ -576,8 +554,8 @@ mod tests {
             target: "sel-7".into(),
             value: "yes".into(),
         };
-        let actual: ClientEvent = serde_json::from_str(&serde_json::to_string(&fixture).unwrap())
-            .unwrap();
+        let actual: ClientEvent =
+            serde_json::from_str(&serde_json::to_string(&fixture).unwrap()).unwrap();
         assert_eq!(actual, fixture);
     }
 
@@ -585,12 +563,8 @@ mod tests {
     fn test_client_command_default_args() {
         let fixture = r#"{"kind":"command","v":1,"id":"c5","name":"new"}"#;
         let actual: ClientEvent = serde_json::from_str(fixture).unwrap();
-        let expected = ClientEvent::Command {
-            v: 1,
-            id: "c5".into(),
-            name: "new".into(),
-            args: vec![],
-        };
+        let expected =
+            ClientEvent::Command { v: 1, id: "c5".into(), name: "new".into(), args: vec![] };
         assert_eq!(actual, expected);
     }
 
@@ -621,8 +595,8 @@ mod tests {
             agent: "forge".into(),
             model: "claude-opus-4-7".into(),
         };
-        let actual: ServerEvent = serde_json::from_str(&serde_json::to_string(&fixture).unwrap())
-            .unwrap();
+        let actual: ServerEvent =
+            serde_json::from_str(&serde_json::to_string(&fixture).unwrap()).unwrap();
         assert_eq!(actual, fixture);
     }
 
@@ -654,14 +628,15 @@ mod tests {
             name: "read".into(),
             args: serde_json::json!({"path": "foo.rs"}),
         };
-        let actual: ServerEvent = serde_json::from_str(&serde_json::to_string(&fixture).unwrap())
-            .unwrap();
+        let actual: ServerEvent =
+            serde_json::from_str(&serde_json::to_string(&fixture).unwrap()).unwrap();
         assert_eq!(actual, fixture);
     }
 
     #[test]
     fn test_server_select_default_fields() {
-        let fixture = r#"{"kind":"select","v":1,"sel_id":"sel-7","prompt":"Apply?","options":["yes","no"]}"#;
+        let fixture =
+            r#"{"kind":"select","v":1,"sel_id":"sel-7","prompt":"Apply?","options":["yes","no"]}"#;
         let actual: ServerEvent = serde_json::from_str(fixture).unwrap();
         let expected = ServerEvent::Select {
             v: 1,
@@ -704,20 +679,13 @@ mod tests {
     #[test]
     fn test_server_info_status_helper() {
         let fixture = ServerEvent::info_status("streaming");
-        let expected = ServerEvent::Status {
-            v: 1,
-            level: "info".into(),
-            text: "streaming".into(),
-        };
+        let expected = ServerEvent::Status { v: 1, level: "info".into(), text: "streaming".into() };
         assert_eq!(fixture, expected);
     }
 
     #[test]
     fn test_server_event_version_helper() {
-        let fixture = ServerEvent::TurnStart {
-            v: 1,
-            turn_id: "t1".into(),
-        };
+        let fixture = ServerEvent::TurnStart { v: 1, turn_id: "t1".into() };
         assert_eq!(fixture.version(), 1);
     }
 
@@ -727,10 +695,7 @@ mod tests {
         // clients don't know about. Deserialisation must succeed.
         let fixture = r#"{"kind":"turn_start","v":1,"turn_id":"t1","brand_new":"hello"}"#;
         let actual: ServerEvent = serde_json::from_str(fixture).unwrap();
-        let expected = ServerEvent::TurnStart {
-            v: 1,
-            turn_id: "t1".into(),
-        };
+        let expected = ServerEvent::TurnStart { v: 1, turn_id: "t1".into() };
         assert_eq!(actual, expected);
     }
 }

@@ -63,8 +63,9 @@ impl InputBuilder {
             // Under the JSON frontend, route through the installed
             // [`SelectorBackend`] so the response arrives as a typed
             // `select_response` event rather than as a stdin line.
-            if let Some(backend) =
-                crate::comint::is_json().then(crate::backend::selector_backend).flatten()
+            if let Some(backend) = crate::comint::is_json()
+                .then(crate::backend::selector_backend)
+                .flatten()
             {
                 return backend.input(&self.message, self.default.as_deref(), self.allow_empty);
             }
