@@ -1,13 +1,45 @@
-# Emacs-Native Forge + Ghostty -- Full Integration Plan
+# Emacs‑Native Forge + Ghostty Integration — Master Plan
 
-> **End-goal**: Forge AND Ghostty are integral parts of the user's custom
-> GNU Emacs branch (`mymain`). A single `brew install emacs-plus@mymain`
-> compiles Emacs with Ghostty terminal emulation built in and Forge
-> installed alongside.
+> **Long‑term vision**: Forge AND Ghostty are integral parts of the user's
+> custom GNU Emacs branch (`mymain` at `~/mysrc/emacs/`). A single
+> `brew install emacs-plus@mymain` (via `~/mysrc/homebrew-emacs-plus/`)
+> compiles Emacs with both capabilities baked in. The project is finished
+> when:
+>
+> 1. **Forge** talks to Emacs over a first-class protocol (Track B JSON)
+>    with a native `forge.el` two-buffer UX — no eat/vterm.
+> 2. **Ghostty** terminal emulation is available inside Emacs as a
+>    proper terminal buffer backed by libghostty-vt — replacing vterm
+>    with production-quality VT emulation (full color, Unicode, Kitty
+>    keyboard/graphics, mouse tracking, reflow).
+> 3. Both are compiled into `emacs-plus@mymain` via the homebrew formula
+>    with no external runtime dependencies beyond what's already linked.
 
-**Created:** 2026-05-05
-**Updated:** 2026-05-08
-**Plan version:** v2 (expanded from original Tracks A-C to full A-F)
+## Working directories
+
+| Path | Role |
+|---|---|
+| `~/mysrc/forgecode/` | Forge source (branch `emacs-native-frontend-track-a`) |
+| `~/mysrc/emacs/` | GNU Emacs source (branch `mymain`, up-to-date) |
+| `~/mysrc/ghostty/` | Ghostty terminal source (includes libghostty, libghostty-vt) |
+| `~/mysrc/ghostling/` | Minimal single-file C terminal on libghostty-vt + Raylib — **reference impl** for Emacs integration |
+| `~/mysrc/homebrew-emacs-plus/` | Homebrew formula (branch `mymain`) |
+| `~/.emacs.d/` | User's Emacs configuration (`lisp/forge-*.el`) |
+| `~/forge/` | Forge runtime configuration |
+
+## Current build command (reference)
+
+```
+CFLAGS='-O3 -DFD_SETSIZE=10000 -DDARWIN_UNLIMITED_SELECT -I/opt/homebrew/opt/sqlite/include -I/opt/homebrew/opt/gcc/include -I/opt/homebrew/opt/libgccjit/include'
+LDFLAGS='-L/opt/homebrew/opt/sqlite/lib -L/opt/homebrew/lib/gcc/15 -I/opt/homebrew/opt/gcc/include -I/opt/homebrew/opt/libgccjit/include'
+brew install emacs-plus@31 --with-xwidgets --with-dragon-icon \
+  --disable-dependency-tracking --disable-silent-rules \
+  --enable-locallisppath=/opt/homebrew/share/emacs/site-lisp \
+  --with-native-compilation=aot --with-xml2 --with-gnutls \
+  --without-compress-install --without-dbus --with-imagemagick \
+  --with-modules --with-rsvg --with-webp --with-ns \
+  --disable-ns-self-contained --with-no-titlebar-and-round-corners
+```
 
 ---
 
@@ -15,105 +47,362 @@
 
 | Track | State | Notes |
 |---|---|---|
-| **A — comint frontend** | ✅ **shipped** | Branch `emacs-native-frontend-track-a`, commits `203427cfc` and `d08ad2d42`. Verified end‑to‑end inside a real Emacs `comint-mode` buffer (banner / `/exit` / EOF / empty lines / piped stdin). |
-| **B — JSON line protocol** | ✅ **shipped (behind `--unstable`)** | Same branch, commits `f5b336d43`, `5f16299e7`, `785ae4916`. Protocol v1, tool events, usage events, native selector round‑trip. 2621 workspace tests green. |
-| **C — Emacs dynamic module** | 🅿 **parked** | Decision 2026-05-08: not worth the cost yet. Track B over a local pipe is already <1 ms per event; module work is months. See §4 for a one‑page resumption guide so the next session starts in five minutes, not five days. |
+| **A — comint frontend** | ✅ **shipped** | Branch `emacs-native-frontend-track-a`, commits `203427cfc` and `d08ad2d42`. Verified end‑to‑end. |
+| **B — JSON line protocol** | ✅ **shipped (behind `--unstable`)** | Same branch, commits `f5b336d43`, `5f16299e7`, `785ae4916`. Protocol v1, tool events, usage events, native selector round‑trip. 2621 tests green. |
+| **C — Emacs dynamic module (Forge)** | 🅿 **parked** | Track B over a local pipe is already <1 ms per event. See §4 for resumption guide. |
+| **D — Ghostty terminal in Emacs** | 🔧 **Phase 1 in progress** | C module built, reviewed, fixed (15 issues), benchmarked. `~/mysrc/emacs-ghostty-module/`. Next: `ghostty-term.el`. See §8. |
+| **E — Forge.el two-buffer UX** | 🆕 **next up** | The elisp client that consumes Track B's JSON protocol. ERC-style output+input buffers. See §9. |
+| **F — Homebrew formula integration** | 🆕 **pending** | Modify `emacs-plus@mymain` formula to build with libghostty-vt + install forge binary. See §10. |
 
-→ **If you are resuming this work, jump to [§7 Resumption Guide](#7-resumption-guide).** It pins down every fact you need: branch state, local paths, library versions, prior decisions, and the exact first commands to run.
+→ **If resuming, jump to [§7 Resumption Guide](#7-resumption-guide).**
 
 ---
 
 
 ## 0. What's actually in the way today
 
-| Path | Role | Branch |
-|---|---|---|
-| `~/mysrc/forgecode/` | Forge source (this repo) | `mymain` |
-| `~/mysrc/emacs/` | GNU Emacs source | `mymain` |
-| `~/mysrc/ghostty/` | Ghostty terminal (includes libghostty, libghostty-vt) | -- |
-| `~/mysrc/ghostling/` | Minimal C terminal on libghostty-vt + Raylib (reference impl) | -- |
-| `~/mysrc/emacs-ghostty-module/` | C module + elisp for Ghostty-in-Emacs (Track D) | -- |
-| `~/mysrc/homebrew-emacs-plus/` | Homebrew formula | `mymain` |
-| `~/.emacs.d/` | Emacs configuration | -- |
-| `~/forge/` | Forge runtime configuration | -- |
-
----
-
-## Track Status Overview
-
-| Track | Description | Status |
-|---|---|---|
-| **A** | comint frontend (`--frontend=comint`) | **SHIPPED** |
-| **B** | JSON line protocol (`--frontend=json --unstable`) | **SHIPPED** |
-| **C** | Forge as Rust dynamic module | **PARKED** (pipe latency <1ms, not needed) |
-| **D** | Ghostty terminal in Emacs | **Phase 1 COMPLETE**, interactive test pending |
-| **E** | forge.el two-buffer UX (consumes Track B) | NOT STARTED |
-| **F** | Homebrew formula (emacs-plus@mymain) | NOT STARTED |
-
----
-
-## Execution Order
-
-```
-DONE:
-  Track A (comint) ..................... SHIPPED
-  Track B (JSONL) ..................... SHIPPED
-  Track D Phase 1 (dyn module) ....... BUILT, REVIEWED, INSTALLED
-
-NEXT:
-  Track D Phase 1 interactive test ... restart Emacs, M-x ghostty-term
-  Track D Phase 2 (in-tree DEFUN) .... ~/mysrc/emacs/src/ghostty-term.c
-  Track E (forge.el) ................. can run in parallel with D Phase 2
-
-LAST:
-  Track F (homebrew formula) ......... depends on D Phase 2 + E
-```
-
----
-
-## 0. Analysis -- What's in the Way (original, still valid)
-
-Findings from `crates/forge_main/`, `crates/forge_select/`,
+Findings from a read‑through of `crates/forge_main/`, `crates/forge_select/`,
 `crates/forge_spinner/`, and `crates/forge_domain/src/console.rs`:
 
-| Concern | Status |
-|---|---|
-| Output abstracted behind `ConsoleWriter` trait | solved (Track A) |
-| Input locked to reedline raw mode | solved (Track A comint, Track B JSON) |
-| Interactive selectors assume TTY | solved (Track A line-prompt, Track B JSON select) |
-| Spinner ANSI garbage in dumb terminals | solved (Track A quiet spinner) |
-| No structured events | solved (Track B NDJSON) |
+| Concern | Location | Status |
+|---|---|---|
+| Output is **already abstracted** behind a trait | `crates/forge_domain/src/console.rs:6-15` (`ConsoleWriter`) | ✅ huge win — most output already routes through this |
+| Streaming markdown writer is generic over `ConsoleWriter` | `crates/forge_main/src/stream_renderer.rs:108-165` | ✅ just plug a new sink |
+| Spinner manager is generic over `ConsoleWriter` | `crates/forge_main/src/stream_renderer.rs:17-77`, `crates/forge_spinner/src/lib.rs` | ✅ same |
+| Input uses **reedline + crossterm raw mode** | `crates/forge_main/src/editor.rs:7-105`, `crates/forge_main/src/input.rs:30-46` | ❌ requires a real PTY — this is the #1 blocker |
+| `Console::set_buffer()` already exists | `crates/forge_main/src/input.rs:48-52` | ✅ pre‑fill hook is in place |
+| Interactive selectors assume a TTY (`is_terminal()` checks) | `crates/forge_select/src/select.rs:79`, `multi.rs:29`, `input.rs:62`, `crates/forge_main/src/main.rs:96` | ❌ behave badly under Emacs comint |
+| `--prompt` / `-p` already runs one‑shot non‑interactive | `crates/forge_main/src/cli.rs:21-22`, `crates/forge_main/src/ui.rs:377-392` | ✅ a poor‑man's Emacs integration already works (each turn = a fresh process) |
+| `--conversation-id` resumes sessions | `crates/forge_main/src/cli.rs:40-41` | ✅ enables stitching one‑shots into a chat |
+| Stream renderer uses `terminal_size()` for wrap width | `crates/forge_main/src/stream_renderer.rs:97-101` | ⚠ falls back to 80 cols if no TTY — fine, but worth wiring to an env var |
+| Bracketed paste, ANSI colours, hinter, completion menu | `crates/forge_main/src/editor.rs:91-104` | ⚠ all reedline features that don't work under a dumb terminal |
+| Spinner uses VT‑aware screen‑buffer tricks | `crates/forge_main/src/main.rs:24-44` (Windows comment), `forge_spinner` | ❌ leaves garbage in scrollback under non‑VT |
+
+### Translation
+- The **output half** is in good shape. `ConsoleWriter` is the seam we need; we
+  can already redirect everything Forge prints to a sink we control.
+- The **input half** is the real problem. Reedline owns the terminal in raw
+  mode; under Emacs `eat`/`vterm` it works only because those packages emulate
+  a real PTY. There is currently no code path that reads input as plain
+  newline‑delimited text from stdin **interactively** (the `-p` and stdin‑pipe
+  paths are one‑shot only — `crates/forge_main/src/main.rs:96-103`,
+  `crates/forge_main/src/ui.rs:377-392`).
+- The **prompt UI** (`crates/forge_main/src/prompt.rs`) and the spinner emit
+  ANSI status decorations that comint mode would render as literal escape
+  garbage.
+
+So the smallest credible change is: **add a non‑raw‑mode interactive
+frontend** that (a) reads input one line at a time from stdin, (b) emits
+plain‑text or framed output, (c) suppresses raw‑mode features (spinner,
+crossterm selectors, ANSI colour by default).
 
 ---
 
-## 1. Track A -- comint frontend [SHIPPED]
+## 1. Recommendation up front
 
-`forge --frontend=comint` reads line-buffered stdin, emits plain text.
-`M-x forge-comint` opens a comint buffer with full Emacs editing.
+Do **Track A** now (days). It gives you a usable Emacs‑native UX immediately
+with comint and zero protocol design.
 
-Commits: `203427cfc`, `d08ad2d42`.
+Schedule **Track B** next (weeks). It is the right long‑term answer: a
+documented JSON line protocol (`--frontend=json`) that any editor can drive,
+and a real `forge.el` major mode with the erc/eshell two‑buffer UX you asked
+for.
 
-All tasks complete. No remaining work.
+**Park Track C** unless Track B's process model proves insufficient. Embedding
+Rust as a dynamic Emacs module is a big maintenance commitment and only pays
+off if you hit a wall (latency, lifecycle, GIL‑style contention) that B can't
+solve.
 
 ---
 
 ## 2. Track A — "Dumb terminal" / comint mode (cheap, days) ✅ SHIPPED
 
-`forge --frontend=json --unstable` reads/writes NDJSON on stdin/stdout.
-Full wire protocol v1 with typed events: chunks, tool calls, selectors,
-usage, errors, reasoning.
+> **Outcome**: `M-x forge-comint` opens a comint buffer running
+> `forge --frontend=comint`. The output area is the comint buffer. The input
+> area is the comint input line at the bottom — full Emacs editing,
+> minibuffer history, `M-p`/`M-n`, `comint-input-ring`, etc. No eat, no vterm.
 
-Commits: `f5b336d43`, `5f16299e7`, `785ae4916`.
-Tests: 2621 green.
+### A.1 Forge‑side changes
 
-All tasks complete. Protocol is stable behind `--unstable` flag.
+1. **CLI flag** in `crates/forge_main/src/cli.rs`:
+   - `--frontend=tty|comint|json` (default `tty`).
+   - Auto‑detect if not set: if `INSIDE_EMACS` env var is non‑empty **and**
+     contains `comint`, default to `comint`. If it contains `vterm`/`eat`,
+     keep `tty`. Else `tty`.
+   - Also honour `TERM=dumb` → force `comint`.
+
+2. **New module** `crates/forge_main/src/comint.rs`:
+   - A line‑buffered stdin reader that replaces `Console::prompt()`'s reedline
+     loop when `frontend == comint`.
+   - Reads `BufReader::new(stdin()).read_line()` loop. Each non‑empty line is
+     submitted as a turn. Empty line = ignore. `EOF` = exit. A configurable
+     "continuation marker" (e.g. trailing backslash, or a `>>` line opener)
+     enables multi‑line input — but the v1 ships with single‑line only. Multi‑
+     line via `comint-send-input` after `RET` works on the Emacs side because
+     comint sends the full region, not per‑char.
+   - No raw mode, no crossterm events, no bracketed paste.
+   - Re‑uses the existing `Console::set_buffer()` semantics where possible so
+     features like `/edit` still pre‑fill content (in comint mode, "pre‑fill"
+     becomes `(insert ...)` into the input ring via an event we print —
+     deferred to A.4 below).
+
+3. **Wire up at construction** in `crates/forge_main/src/ui.rs:284-296`:
+   - If `frontend == comint`, construct a `CominInput` instead of `Console`,
+     behind a small enum or trait `Input { fn prompt(...) -> AppCommand }`.
+   - Smallest viable refactor: make `console` field on `UI` a
+     `Box<dyn UserInput>` where `UserInput` exposes `prompt(&self,
+     &mut ForgePrompt) -> Result<AppCommand>` and `set_buffer(&self, String)`.
+     Both `Console` (reedline) and `CominInput` implement it.
+
+4. **Tame the output side for dumb terminals**:
+   - In `comint` mode, set `colored::control::set_override(false)` and skip
+     the `with_ansi_colors(true)` calls. Most ANSI is already conditional on
+     `colored`'s detection, so this is one toggle.
+   - `crates/forge_main/src/stream_renderer.rs:97-101`: when `frontend ==
+     comint`, take wrap width from `$COLUMNS` (Emacs sets this on its comint
+     subprocesses) or default 100, ignore `terminal_size`.
+   - `forge_spinner`: in `comint` mode, replace the animated spinner with a
+     single static line `[…]` printed once per phase change, or with **no
+     spinner at all** plus a `[forge: thinking]` line when the model starts
+     streaming. Decision: ship "no spinner" first; revisit if you miss it.
+     Implementation: a `Spinner` enum with `Animated` and `Quiet` variants,
+     selected at construction in `crates/forge_main/src/ui.rs:280-296`.
+   - `crates/forge_select/src/{select,multi,input,confirm}.rs`: wrap each
+     `is_terminal()` guard with: "if comint frontend, **fall back to
+     line‑oriented prompt**" — print the question + numbered options, read a
+     line, parse. Today these crates already check `is_terminal()` and bail;
+     we replace the bail with a `LineSelector` impl that round‑trips through
+     stdin. This is the only place where comint mode needs more than a flag —
+     the selectors otherwise crash or print garbage.
+
+5. **Banner / prompt decorations** in `crates/forge_main/src/prompt.rs` and
+   `crates/forge_main/src/banner.rs`:
+   - In comint mode, suppress ANSI styling and avoid cursor‑movement escapes.
+     Print a plain‑text prompt prefix like `forge> ` so comint can pick it up
+     as `comint-prompt-regexp`.
+
+### A.2 Emacs‑side changes — `forge-comint.el`
+
+Single file, ~150 lines. Lives in your `~/.emacs.d/lisp/` (not in this repo).
+
+```elisp
+(define-derived-mode forge-comint-mode comint-mode "Forge"
+  "Major mode for chatting with Forge in a comint buffer."
+  (setq comint-prompt-regexp "^forge> ")
+  (setq comint-prompt-read-only t)
+  (setq-local comint-input-sender #'forge-comint--send)
+  ;; Render markdown read-only, fontify code blocks, etc.
+  (add-hook 'comint-output-filter-functions #'forge-comint--fontify nil t))
+
+(defun forge-comint ()
+  (interactive)
+  (let* ((default-directory (or (project-root (project-current)) default-directory))
+         (buf (get-buffer-create "*forge*"))
+         (process-environment (cons "INSIDE_EMACS=comint" process-environment)))
+    (with-current-buffer buf
+      (unless (comint-check-proc buf)
+        (apply #'make-comint-in-buffer "forge" buf
+               (executable-find "forge")
+               nil
+               '("--frontend" "comint")))
+      (forge-comint-mode))
+    (pop-to-buffer buf)))
+```
+
+Optional polish:
+- Bind `C-c C-c` to `comint-interrupt-subjob` (maps to the existing Ctrl+C
+  handling in `crates/forge_main/src/ui.rs:381-389` — already cancels the
+  current turn cleanly).
+- Bind `C-c C-l` to clear via `(comint-clear-buffer)`.
+- Use `markdown-mode`'s fontification on the output region.
+
+### A.3 Tasks (atomic)
+
+- [ ] Add `--frontend` flag to `Cli` in `crates/forge_main/src/cli.rs:13-68`.
+- [ ] Add `INSIDE_EMACS` / `TERM=dumb` autodetect in `crates/forge_main/src/main.rs` before building `UI`.
+- [ ] Define `trait UserInput` in `crates/forge_main/src/input.rs`.
+- [ ] Implement `CominInput` reading line‑buffered stdin; suppress raw mode.
+- [ ] Switch `UI.console` field to `Box<dyn UserInput>`; pick impl by `--frontend`.
+- [ ] Add `Spinner::Quiet` variant in `forge_spinner`; pick by frontend.
+- [ ] Disable ANSI colours in comint mode (`colored::control::set_override(false)`).
+- [ ] Wrap `is_terminal()` selector guards with comint line‑prompt fallback in `forge_select`.
+- [ ] Plain `forge> ` prompt in `crates/forge_main/src/prompt.rs` for comint mode.
+- [ ] Snapshot tests: `cargo insta test` for the four `forge_select` widgets in `comint` mode.
+- [ ] Smoke test: `INSIDE_EMACS=comint forge --frontend=comint` from a plain shell, type a turn, see streaming text without ANSI garbage.
+- [ ] `forge-comint.el` skeleton in `~/.emacs.d/lisp/` (out of scope for this repo).
+
+### A.4 Known limitations of Track A
+
+- Streaming markdown is rendered as plain text (no live syntax highlighting in
+  Emacs). Acceptable v1; A.4 refit can add a `comint-output-filter-functions`
+  hook to apply `markdown-mode` faces.
+- No structured events for tool calls — they appear as plain printed lines.
+  You won't get clickable file links until Track B.
+- `set_buffer()` pre‑fill (used by `/edit`, commit flows) requires a side‑
+  channel — comint can't easily inject text into its own input ring from the
+  subprocess. Workaround: print a marker line `[forge:prefill]TEXT[/]` and
+  have `forge-comint--fontify` strip it and call `(insert TEXT)` into the
+  input area. Optional for v1.
+
+### A.5 Risk
+
+Low. Reedline path is untouched in TTY mode. All changes are gated behind
+`--frontend=comint`. Reverting is trivial.
 
 ---
 
 ## 3. Track B — JSON‑line frontend + first‑class `forge.el` (right answer, weeks) ✅ SHIPPED (Rust side)
 
-Track B pipe latency is <1ms. No need for in-process embedding.
-Revisit only if zero-copy buffer access becomes needed.
+> **Outcome**: `forge --frontend=json` reads NDJSON requests on stdin, writes
+> NDJSON events on stdout. `forge.el` provides two buffers: `*forge:output*`
+> (read‑only, fontified, scrolling history) and `*forge:input*` (regular Emacs
+> buffer with `RET` bound to send). Tool calls, status updates, selectors, and
+> diffs all become typed events the editor can render natively (clickable
+> links, fold/unfold, inline diffs).
+
+### B.1 Why this is the right shape
+
+- **Editor‑agnostic**: same protocol works for Neovim, Helix, Zed, VS Code.
+- **Decouples rendering from CLI**: the markdown stream still works in TTY mode;
+  JSON is just a second sink wired to the existing `ConsoleWriter` seam.
+- **Cancellable, resumable, scriptable**: structured events make it trivial
+  to add per‑message cancel, retry, fork, and replay without inventing a UX
+  for each.
+- **Natural test surface**: NDJSON snapshots replace ad‑hoc terminal capture
+  in `cargo insta test`.
+
+### B.2 Wire protocol (v0 sketch)
+
+One JSON object per line, both directions. Schema versioned via `"v": 1`.
+
+**Client → Forge** (from Emacs):
+```jsonl
+{"v":1,"id":"c1","kind":"submit","text":"refactor foo to bar","attachments":[]}
+{"v":1,"id":"c2","kind":"cancel","target":"c1"}
+{"v":1,"id":"c3","kind":"select_response","target":"sel-7","value":"yes"}
+{"v":1,"id":"c4","kind":"set_buffer","text":"…"}
+{"v":1,"id":"c5","kind":"command","name":"new"}
+```
+
+**Forge → Client** (to Emacs):
+```jsonl
+{"v":1,"kind":"ready","conversation_id":"…","agent":"forge","model":"claude-opus-4-7"}
+{"v":1,"kind":"turn_start","turn_id":"t1"}
+{"v":1,"kind":"chunk","turn_id":"t1","stream":"assistant","text":"Looking at "}
+{"v":1,"kind":"chunk","turn_id":"t1","stream":"assistant","text":"`foo.rs`…"}
+{"v":1,"kind":"reasoning","turn_id":"t1","text":"…"}
+{"v":1,"kind":"tool_call","turn_id":"t1","tool_id":"k1","name":"read","args":{"path":"foo.rs"}}
+{"v":1,"kind":"tool_result","turn_id":"t1","tool_id":"k1","ok":true,"summary":"42 lines"}
+{"v":1,"kind":"select","sel_id":"sel-7","prompt":"Apply patch?","options":["yes","no","diff"]}
+{"v":1,"kind":"status","level":"info","text":"streaming"}
+{"v":1,"kind":"usage","input_tokens":12345,"output_tokens":678,"cost":0.04}
+{"v":1,"kind":"turn_end","turn_id":"t1"}
+{"v":1,"kind":"error","text":"…","cause":"…"}
+```
+
+### B.3 Forge‑side changes
+
+1. **Frontend trait** in `crates/forge_main/src/lib.rs` (new module
+   `frontend.rs`):
+   ```rust,ignore
+   pub trait Frontend: Send + Sync {
+       fn next_event(&self) -> Result<ClientEvent>;     // blocking read of one ClientEvent
+       fn emit(&self, event: ServerEvent) -> Result<()>; // write one ServerEvent
+   }
+   ```
+   Two impls: `TtyFrontend` (today's behaviour, wraps `Console` + spinner +
+   markdown stream renderer) and `JsonFrontend` (NDJSON over stdin/stdout).
+
+2. **`JsonConsoleWriter`** implementing `forge_domain::ConsoleWriter`. Buffers
+   bytes from the markdown stream, splits on newlines, wraps each chunk in a
+   `chunk` event. Plug it into `StreamingWriter` exactly where today's
+   `StdoutPrinter` plugs in — all the existing rendering machinery in
+   `crates/forge_main/src/stream_renderer.rs:108-165` keeps working unchanged.
+
+3. **Selector adapter** in `forge_select`: when running under `JsonFrontend`,
+   `select`/`multi`/`confirm`/`input` emit a `select` event and block on a
+   matching `select_response` from the client. Implemented as a thin
+   `Selector` trait already implied by the four widgets.
+
+4. **Tool‑call adapter** in `crates/forge_main/src/tools_display.rs` and
+   `crates/forge_main/src/sync_display.rs:1-177`: in JSON mode, instead of
+   pretty‑printing tool invocations, emit `tool_call` / `tool_result` events.
+   The same data is already collected — the change is the sink.
+
+5. **Spinner**: in JSON mode, the spinner becomes `status` events (`thinking`,
+   `streaming`, `done`).
+
+6. **Replace `read_line` loop in main**: in JSON mode, the input loop in
+   `crates/forge_main/src/ui.rs:397-443` becomes "block on next `submit`
+   ClientEvent, dispatch as turn".
+
+7. **Cancellation**: `Ctrl+C` handling at `crates/forge_main/src/ui.rs:381-389`
+   stays. JSON `cancel` events route to the same cancel signal.
+
+### B.4 Emacs‑side — `forge.el` (separate elisp project, not in this repo)
+
+Two‑buffer UX, ERC‑style:
+
+- `*forge:output*` — major mode `forge-output-mode` derived from
+  `special-mode`. Read‑only. Fontifies via `markdown-mode` faces. Tool
+  calls render as collapsible blocks (overlays). File mentions are buttons.
+- `*forge:input*` — major mode `forge-input-mode` derived from `text-mode`.
+  Full normal Emacs editing. `RET` = newline, `C-c C-c` = send, `C-c C-l` =
+  clear, `C-c C-k` = cancel current turn, `M-p`/`M-n` = previous/next
+  submission, history persisted across sessions.
+- Communication: a single `make-process` running `forge --frontend=json`,
+  filter parses NDJSON line‑by‑line.
+- Layout: `display-buffer-in-side-window` puts input in a 5‑line bottom side
+  window, output fills the rest. Window config persisted.
+- Selectors: `select` events open a `read-multiple-choice` or a `transient`
+  menu and the answer goes back as `select_response`.
+- Status line: `usage` events update mode‑line tokens/cost.
+
+This buys you **exactly** the erc/eshell shape you described — output big,
+input small, both native Emacs.
+
+### B.5 Tasks
+
+- [ ] Define `Frontend`, `ClientEvent`, `ServerEvent` types + serde derives in `crates/forge_main/src/frontend.rs`.
+- [ ] `TtyFrontend` wrapping today's `Console` + `StreamingWriter`. No behaviour change in TTY mode.
+- [ ] `JsonFrontend` reading NDJSON from `stdin`, writing to `stdout`.
+- [ ] `JsonConsoleWriter: ConsoleWriter` adapter for streaming markdown.
+- [ ] `Selector` trait in `forge_select`; per‑frontend impls.
+- [ ] Tool‑call event emission in `tools_display.rs` and `sync_display.rs`.
+- [ ] Status/usage events from `forge_spinner` and the usage path in `crates/forge_main/src/ui.rs:298-336`.
+- [ ] Cancel/select wiring through `ui.rs` event loop.
+- [ ] Versioned schema doc in `docs/frontend-protocol.md`.
+- [ ] Insta snapshot tests for protocol round‑trips covering: turn, tool call, selector, error, cancel, usage.
+- [ ] CI smoke test: spawn `forge --frontend=json`, drive a minimal session, assert event sequence.
+- [ ] Ship `forge.el` as a separate package (out of repo).
+
+### B.6 Risks & decisions
+
+- **Schema lock‑in**: ship as v0 explicitly unstable, hide behind
+  `--frontend=json --unstable` for the first month so we can iterate without
+  breaking editor packages.
+- **Backpressure**: stdin/stdout pipes are sufficient for token‑per‑chunk
+  streams. If large tool results saturate, switch to a length‑prefixed framing
+  later — but NDJSON is fine for v0.
+- **Cross‑editor reuse**: keep schema editor‑agnostic. Don't bake Emacs idioms
+  into event names.
+- **Telemetry/log channels**: `tracing` already writes to a separate log path
+  (`crates/forge_main/src/main.rs:294`). Stays unchanged.
+- **Windows**: NDJSON over stdin/stdout works the same on Windows. No
+  raw‑mode dance needed because we don't enable VT.
+
+### B.7 Why not just use `--prompt` per turn?
+
+You can today, and Emacs‑side that gives you exactly the UX you want. But:
+- Per‑turn process startup adds ~hundreds of ms (rustls init, config parse,
+  cache rebuild — see `crates/forge_main/src/ui.rs:447-458`).
+- Streaming becomes per‑process, no continuity for tool approval flows.
+- Selectors abort because there's no TTY (`crates/forge_main/src/main.rs:96`).
+- You lose conversation context unless you juggle `--conversation-id` from
+  Emacs and accept a fresh chat ring per call.
+
+Track B is `--prompt`‑per‑turn done right: one long‑lived process, a real
+protocol, structured events.
 
 ---
 
@@ -147,7 +436,7 @@ Concrete revival triggers (any one of these is enough):
 - Per‑process startup cost of `forge --frontend=json` becomes a problem
   (e.g. starting a session per file becomes the dominant UX path).
 
-Embed `libghostty-vt` (Ghostty's VT-only library) into Emacs.
+### C.1 What it would look like
 
 - Use the [`emacs` crate](https://crates.io/crates/emacs) (currently 0.21.0,
   March 2026; supports Emacs 28+, including 31.0.50). One call:
@@ -227,7 +516,7 @@ Order matters. Each step is a discrete, atomic commit; expect 0.5–1 day each.
 
 ---
 
-## 5. Track E -- forge.el Two-Buffer UX
+## 5. Cross‑track work that pays off in any track
 
 These were uncontroversial cleanups Track A needed and B/C inherit. **All five
 landed during A+B.**
@@ -253,7 +542,7 @@ landed during A+B.**
 
 ---
 
-## 6. Track F -- Homebrew Formula Integration
+## 6. Decision gates
 
 - **Gate A → B**: ✅ both shipped. Used in production via comint;
   `--frontend=json` wire is ready for an editor client to consume.
@@ -376,4 +665,302 @@ If any of those fail, something rotted in main; rebase before continuing.
 - **Track C parked**, not abandoned — see §4.
 
 That's the whole context. Resume from §7.5.
+
+---
+
+## 8. Track D — Ghostty Terminal in Emacs (the big one)
+
+> **Outcome**: `M-x ghostty-term` opens a buffer backed by libghostty-vt.
+> Full 24-bit color, Unicode with grapheme clusters, Kitty keyboard/graphics
+> protocol, mouse tracking, text reflow on resize, scrollback — all the
+> features Ghostty has, rendered inside an Emacs buffer. Replaces vterm/eat
+> as the terminal of choice.
+
+### 8.1 Architecture overview
+
+```
+┌─────────────────────────────────────────────────┐
+│ Emacs (C core, branch mymain)                   │
+│                                                 │
+│  ghostty-term.c  ←── new C source file          │
+│  ┌──────────────────────────────────────────┐   │
+│  │  GhosttyTerminal (libghostty-vt opaque)  │   │
+│  │  PTY master fd (forkpty)                 │   │
+│  │  Emacs buffer ↔ render state sync        │   │
+│  └──────────────────────────────────────────┘   │
+│  ghostty-term.el ←── elisp major mode           │
+│                                                 │
+│  Links against: libghostty_vt.a (static)        │
+└─────────────────────────────────────────────────┘
+```
+
+Two integration strategies evaluated:
+
+| Strategy | Pros | Cons | Verdict |
+|---|---|---|---|
+| **A: Emacs dynamic module** (`.dylib` loaded at runtime) | No Emacs source changes; `--with-modules` already enabled; can iterate without recompiling Emacs | Crash isolation is poor (panic = Emacs crash); needs per-platform build; must ship separately from Emacs | **Start here** — fastest iteration, lowest risk, proven pattern (vterm-module does exactly this) |
+| **B: Compile into Emacs source tree** | Single binary; native Lisp_Object integration; no `.dylib` to manage; can use internal Emacs APIs (redisplay, faces, process) | Must patch `configure.ac`, `Makefile.in`, `src/Makefile.in`; harder to upstream; couples to Emacs internals | **End state** — migrate to this once the module works and the API surface stabilises |
+
+**Decision: start with Strategy A (dynamic module), evolve to Strategy B.**
+
+### 8.2 Reference implementation analysis (ghostling/main.c)
+
+The ghostling demo is 1604 lines of C in a single file. It shows the
+**complete** libghostty-vt consumer pattern:
+
+1. **PTY lifecycle** (`main.c:43-96`): `forkpty()` → non-blocking master fd → child execs shell.
+2. **Terminal creation** (`ghostty_terminal_new()`): columns, rows, allocator.
+3. **Input loop** (`main.c:158-400`): Raylib key events → `ghostty_terminal_key_event()` / `ghostty_terminal_mouse_event()`.
+4. **VT data feed** (`main.c:132-156`): read PTY → `ghostty_terminal_vt_write(terminal, buf, len)`.
+5. **Render loop** (`main.c:400+`): iterate render state → draw cells with font.
+6. **Resize** (`main.c`): `ghostty_terminal_resize()` + `TIOCSWINSZ` on PTY.
+
+For Emacs, we replace Raylib with:
+- **Windowing/rendering**: Emacs redisplay (faces, text properties, overlays).
+- **Input**: Emacs keyboard/mouse events translated to Ghostty key/mouse events.
+- **PTY**: Emacs's own `make-process` / process filter, or direct `forkpty` in C.
+
+### 8.3 The dynamic module approach (Strategy A — do this first)
+
+A C dynamic module (`.dylib` / `.so`) that:
+
+1. **Compiles against** `emacs-module.h` (at `~/mysrc/emacs/src/emacs-module.h`)
+   and `ghostty/vt.h` (at `~/mysrc/ghostty/include/ghostty/vt.h`).
+2. **Links** `libghostty_vt.a` statically (built via `zig build lib-vt` in
+   `~/mysrc/ghostty/`).
+3. **Exports** to Emacs:
+   - `(ghostty-term--init COLS ROWS)` → creates terminal + PTY, returns handle
+   - `(ghostty-term--write HANDLE STRING)` → feed input to PTY
+   - `(ghostty-term--key HANDLE KEY MODS)` → translate and encode key event
+   - `(ghostty-term--mouse HANDLE EVENT X Y MODS)` → mouse event
+   - `(ghostty-term--resize HANDLE COLS ROWS)` → resize terminal + PTY
+   - `(ghostty-term--render HANDLE)` → return render state as a vector of
+     cell descriptors (codepoint, fg, bg, attrs, row, col)
+   - `(ghostty-term--destroy HANDLE)` → cleanup
+   - `(ghostty-term--pty-fd HANDLE)` → return the PTY fd for Emacs process
+     integration (`make-pipe-process` or `set-process-filter`)
+4. **Rendering** is done in elisp: the module returns cell data, elisp
+   paints the buffer using `insert` + text properties (face, fg/bg colors).
+   This keeps the module small and crash-safe.
+
+### 8.4 Build: libghostty-vt static library
+
+```bash
+cd ~/mysrc/ghostty
+zig build lib-vt -Doptimize=ReleaseFast
+# produces: zig-out/lib/libghostty_vt.a
+# headers:  include/ghostty/vt.h  +  include/ghostty/vt/*.h
+```
+
+### 8.5 Module project structure
+
+```
+~/mysrc/emacs-ghostty-module/        (new repo or subdir of ~/mysrc/emacs/)
+  Makefile                           # or CMakeLists.txt
+  ghostty-term-module.c              # the C dynamic module
+  ghostty-term.el                    # elisp major mode
+  README.md
+```
+
+Alternatively, this can live directly in `~/mysrc/emacs/src/` when we move to
+Strategy B (compile into Emacs).
+
+### 8.6 Tasks (Track D — atomic, ordered)
+
+Phase 1: Standalone dynamic module (iterate fast)
+- [x] Build libghostty-vt: `zig build lib-vt -Doptimize=ReleaseFast` in `~/mysrc/ghostty/` (7.5 MB `.a`)
+- [x] Create module project: `~/mysrc/emacs-ghostty-module/` (Makefile + C source)
+- [x] Write `ghostty-term-module.c`: init, write, destroy, pty-fd, process, render, cursor, resize, scroll, key, check-child, version (1070 lines C)
+- [x] Compile: static-linked 1.5 MB `.dylib`, zero warnings (GCC 15 / clang)
+- [x] Smoke test: `(module-load ...)` + full lifecycle verified in Emacs (version, init, process, render, cursor, write, resize, destroy)
+- [x] Code review: critic + code-reviewer agents found 15 issues (2 critical, 6 warning, 7 info)
+- [x] Fix all 15 issues: instance lifecycle (in_use flag, slot reuse), memory safety (face_vec clamp, dynamic codepoints, NULL checks), error handling (non_local_exit_check on all extract paths), signal_error via non_local_exit_signal, child reaping (poll+SIGKILL), check-child function, dirty-row optimization, integer range validation, Makefile portability
+- [x] Re-verify: 11 functional tests + 5 error-path tests pass (invalid handle, double-destroy, overflow, slot reuse)
+- [x] Performance benchmark: 120x40 full render = **0.01 ms** (500x under 5ms target), clean render = **0.001 ms**
+- [x] Write `ghostty-term.el` (852 lines): major mode, 60fps timer render loop, RLE face batching, key translation, input dispatch, cursor overlay, resize, scrollback, bracketed paste, login shell
+- [x] Review round 2: critic (ITERATE) + code-reviewer (REQUEST CHANGES) found 6 critical + 8 warning issues
+- [x] Fix all issues: deferred module load, resize hook ref-counting, face cache eviction (4096 cap), nil handle guard, timer error protection, paint-row bounds check, C-c C-z/C-\/C-y bindings, login shell prefix, signal_error list format, C render nil-for-empty
+- [x] Byte-compile: zero warnings. Integration test: 15/15 pass (module lifecycle, render, key translation, face cache, instance counter)
+- [x] Installed to `~/.emacs.d/lisp/` (ghostty-term-module.dylib + ghostty-term.el)
+- [ ] Interactive test: restart Emacs, `M-x ghostty-term`, verify colors/input/htop/vim/tmux
+- [ ] Add mouse click/drag support (mouse encoder integration)
+- [ ] Add CJK/wide-character face alignment
+
+Phase 2: Compile into Emacs source tree (Strategy B)
+- [ ] Copy `ghostty-term-module.c` → `~/mysrc/emacs/src/ghostty-term.c`
+- [ ] Patch `~/mysrc/emacs/src/Makefile.in` to compile and link `ghostty-term.c` + `libghostty_vt.a`
+- [ ] Patch `~/mysrc/emacs/configure.ac` to add `--with-ghostty-term` flag
+- [ ] Convert module API calls (`env->make_*`) to native Lisp_Object / DEFUN macros
+- [ ] Integrate with Emacs process/PTY infrastructure (`process.c` patterns)
+- [ ] Move `ghostty-term.el` to `~/mysrc/emacs/lisp/ghostty-term.el`
+- [ ] Verify: `./configure --with-ghostty-term && make && src/emacs -Q -e '(ghostty-term)'`
+
+### 8.7 Key design decisions for Track D
+
+- **Static link libghostty-vt**: no `.dylib` dependency at runtime. The Zig
+  build produces a self-contained `.a` with no libc dependency (it's
+  `--nostdlib` by default). This is ideal for embedding.
+- **C, not Zig/Rust**: the module is pure C to match Emacs conventions.
+  Ghostling already proves the full API is consumable from C.
+  No FFI bridge needed — direct `#include <ghostty/vt.h>` calls.
+- **Render in elisp, not C**: the module extracts cell data; elisp does the
+  painting. This keeps the C side minimal and crash-safe. If perf is a
+  problem, we can move rendering to C later (like vterm-module does).
+- **PTY in C**: use `forkpty()` in the module (same as ghostling), expose
+  the fd to Emacs. Emacs monitors the fd via its event loop. This avoids
+  reinventing PTY management in elisp.
+
+### 8.8 Risks
+
+- **libghostty-vt API stability**: the header says "WARNING: incomplete,
+  work-in-progress API." We pin to a specific commit (same as ghostling
+  does: `fdb6e3d2c8543e2e756b7e07f44372efbc0fba4b`). Update deliberately.
+- **Render performance**: vterm-module renders in C for speed. If elisp
+  rendering is too slow, we escalate to C rendering. The module boundary
+  makes this a contained change.
+- **Zig build dependency**: building libghostty-vt requires Zig 0.15.x.
+  For the homebrew formula, we pre-build the `.a` or add Zig as a build
+  dep.
+
+---
+
+## 9. Track E — forge.el Two-Buffer UX
+
+> **Outcome**: `M-x forge-chat` opens an ERC-style two-buffer layout
+> consuming Track B's `--frontend=json`. Output buffer (read-only, markdown-
+> fontified, tool calls as collapsible blocks) + input buffer (full Emacs
+> editing, `C-c C-c` to send). Replaces the current `eat`-based
+> `forge-code.el`.
+
+### 9.1 Relationship to existing elisp
+
+`~/.emacs.d/lisp/forge-code.el` v1.0.0 already provides session management,
+`C-c F` prefix, agent selection, `*forge:<agent>:<project>*` buffer naming.
+Track E extends this — does NOT greenfield.
+
+### 9.2 Tasks (Track E — ordered)
+
+- [ ] Write `forge-json.el` — NDJSON process filter that parses `ServerEvent`s
+- [ ] Write `forge-output-mode` — `special-mode` derivative for the output buffer; markdown fontification via `markdown-mode` faces; tool calls as collapsible overlays; file mentions as buttons
+- [ ] Write `forge-input-mode` — `text-mode` derivative; `C-c C-c` sends, `C-c C-k` cancels, `M-p`/`M-n` history
+- [ ] Wire `make-process` to `forge --frontend=json --unstable` with the NDJSON filter
+- [ ] Handle `select` events → `read-multiple-choice` or `transient` menu → send `select_response`
+- [ ] Display `usage` events in the mode-line (tokens, cost)
+- [ ] Layout: `display-buffer-in-side-window` (input 5-line bottom, output fills rest)
+- [ ] Integrate with existing `forge-code.el` session management (reuse buffer naming, keybindings, agent switching)
+- [ ] Test end-to-end: start forge.el, submit a turn, see streaming output, handle a tool call selector, see usage stats
+
+### 9.3 Risk
+
+Low. Track B wire protocol is already shipped and tested. This is pure elisp
+work consuming a stable NDJSON stream. Can be iterated without touching the
+Rust side.
+
+---
+
+## 10. Track F — Homebrew Formula Integration
+
+> **Outcome**: `brew install emacs-plus@mymain` from
+> `~/mysrc/homebrew-emacs-plus/` produces an Emacs binary with:
+> - libghostty-vt statically linked (Track D Phase 2)
+> - `ghostty-term.el` in the site-lisp path
+> - `forge` binary installed alongside
+
+### 10.1 Tasks (Track F — ordered)
+
+- [ ] Modify `Formula/emacs-plus@31.rb` (or create `emacs-plus@mymain.rb`) to:
+  - Add Zig as a build dependency (for libghostty-vt)
+  - Clone/fetch ghostty source at the pinned commit
+  - Run `zig build lib-vt -Doptimize=ReleaseFast`
+  - Pass `--with-ghostty-term` to `./configure` (once Track D Phase 2 lands)
+- [ ] Add a `forge` resource block that downloads the forge binary (or builds from source if Rust toolchain is available)
+- [ ] Install `forge-*.el` and `ghostty-term.el` to `#{share}/emacs/site-lisp/`
+- [ ] Test: `brew install --build-from-source emacs-plus@mymain` produces a working Emacs with both features
+- [ ] Document the custom build flags in the formula
+
+### 10.2 Dependencies
+
+Track F depends on:
+- Track D Phase 2 (ghostty-term compiled into Emacs source)
+- Track E (forge.el files to install)
+- A tagged forge release (or local build)
+
+### 10.3 Risk
+
+Medium. Homebrew formulas have strict conventions. Adding Zig as a build
+dependency and a multi-step build (ghostty → Emacs) increases formula
+complexity. May need to pre-build the static lib and distribute it as a
+bottle.
+
+---
+
+## 11. Execution order and dependencies
+
+```
+Track A ─── ✅ done
+Track B ─── ✅ done
+                                    ┌─→ Track E (forge.el UX) ──────┐
+                                    │                               │
+                                    │   Track D Phase 1 (module) ───┤
+                                    │     │                         │
+                                    │     ▼                         │
+                                    │   Track D Phase 2 (in-tree) ──┤
+                                    │                               │
+                                    └───────────────────────────────┘
+                                                    │
+                                                    ▼
+                                            Track F (homebrew)
+Track C ─── 🅿 parked (independent, unblock only if B proves insufficient)
+```
+
+**Recommended execution order:**
+1. **Track D Phase 1** — standalone dynamic module. This is the most
+   technically uncertain piece and needs to be de-risked first. Can be
+   done in parallel with Track E.
+2. **Track E** — forge.el two-buffer UX. Pure elisp, no Emacs recompilation
+   needed. Highest daily-use value. Can be done in parallel with Track D.
+3. **Track D Phase 2** — migrate module into Emacs source tree. Do this once
+   the dynamic module is working and the API is stable.
+4. **Track F** — homebrew formula. Final integration step; depends on D2+E.
+
+### Future: TOON as alternative wire format (low priority)
+
+TOON (Token-Oriented Object Notation, `~/mysrc/toon-spec/` spec v3.0,
+`~/mysrc/toon/` reference impl) is a compact, human-readable encoding of the
+JSON data model optimised for LLM token efficiency. Lossless JSON round-trip.
+
+**JSONL vs TOON — when to use which:**
+
+| Criterion | JSONL | TOON |
+|---|---|---|
+| **Machine parsing** | Native everywhere (every language, every tool) | Needs a dedicated parser; no ecosystem adoption yet |
+| **Debuggability** | Readable but verbose; pipe through `jq` | More compact and arguably more readable for tabular data |
+| **Token efficiency** | Baseline | ~30-50% fewer tokens for uniform arrays of objects (its sweet spot) |
+| **Streaming** | One event per line, trivially splittable | Line-oriented too, but delimiter scoping rules add parser complexity |
+| **Forge frontend wire** | Already shipped (Track B, v1) | Would be a v2 wire option |
+| **Spec maturity** | RFC 8259 (decades-old standard) | Working Draft v3.0 (2025-11-24) |
+
+**Recommendation:** Keep JSONL as the default wire format for the Forge
+frontend protocol. TOON is interesting as an *optional* encoding for
+payloads that are heavy on uniform structured data (e.g., large tool
+results, batch file listings, multi-file diffs) where token savings
+matter. The right place to introduce it is as a content-encoding option
+inside the existing JSONL envelope — e.g., a `tool_result` event whose
+`content_type` is `text/toon` instead of `text/plain`. This avoids
+changing the framing protocol and lets consumers that don't understand
+TOON fall back to JSON.
+
+**When to revisit:** after Track E (forge.el) is shipping and we have
+real usage data on which event kinds are token-heavy. Not before.
+
+- [ ] (future) Evaluate TOON encoding for large tool results inside the JSONL protocol
+- [ ] (future) Add `content_type: text/toon` support to `ServerEvent` payloads
+- [ ] (future) Write a TOON decoder in elisp (or use the reference TS impl via a subprocess)
+
+---
+
+**Next immediate action:** Write `ghostty-term.el` (Track D Phase 1 remaining
+task) — the C module is verified and fast. This is a pure-elisp task:
+major mode, timer-driven render loop, input dispatch, face painting.
+Track E can begin in parallel since it's independent.
 
