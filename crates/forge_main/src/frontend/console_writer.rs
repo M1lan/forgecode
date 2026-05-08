@@ -58,11 +58,7 @@ impl JsonConsoleWriter {
     /// `Vec<u8>` round-trips the events.
     pub fn new(sink: Box<dyn Write + Send>) -> Self {
         Self {
-            inner: Mutex::new(Inner {
-                sink,
-                turn_id: None,
-                stream: "assistant".into(),
-            }),
+            inner: Mutex::new(Inner { sink, turn_id: None, stream: "assistant".into() }),
         }
     }
 
@@ -319,7 +315,10 @@ mod tests {
         assert_eq!(n, 4);
 
         let lines = captured_lines(&captured);
-        assert!(lines.is_empty(), "no chunk should be emitted, got {lines:?}");
+        assert!(
+            lines.is_empty(),
+            "no chunk should be emitted, got {lines:?}"
+        );
     }
 
     #[test]
@@ -345,10 +344,7 @@ mod tests {
         let (sink, captured) = make_sink();
         let writer = JsonConsoleWriter::new(sink);
 
-        let event = ServerEvent::TurnStart {
-            v: PROTOCOL_VERSION,
-            turn_id: "t1".into(),
-        };
+        let event = ServerEvent::TurnStart { v: PROTOCOL_VERSION, turn_id: "t1".into() };
         writer.emit(&event).unwrap();
 
         let lines = captured_lines(&captured);

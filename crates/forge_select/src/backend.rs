@@ -24,8 +24,8 @@ use anyhow::Result;
 /// widget builders' `prompt` methods:
 /// - `Ok(Some(_))` on a user response
 /// - `Ok(None)` on user cancellation, EOF, or an empty option list
-/// - `Err(_)` only on transport-level failures (broken pipe, malformed
-///   protocol message, IO error)
+/// - `Err(_)` only on transport-level failures (broken pipe, malformed protocol
+///   message, IO error)
 ///
 /// Implementations may block the calling thread for an arbitrary amount
 /// of time while waiting for the user.
@@ -70,25 +70,18 @@ static BACKEND: Mutex<Option<Arc<dyn SelectorBackend>>> = Mutex::new(None);
 /// Installs `backend` as the process-wide selector. Replaces any
 /// previously installed backend. Typically called once at startup.
 pub fn install_selector_backend(backend: Arc<dyn SelectorBackend>) {
-    *BACKEND
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = Some(backend);
+    *BACKEND.lock().unwrap_or_else(|e| e.into_inner()) = Some(backend);
 }
 
 /// Removes any installed selector backend. Tests and shutdown paths use
 /// this to keep state from leaking across runs.
 pub fn clear_selector_backend() {
-    *BACKEND
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = None;
+    *BACKEND.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 /// Returns the currently installed backend if any.
 pub fn selector_backend() -> Option<Arc<dyn SelectorBackend>> {
-    BACKEND
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
+    BACKEND.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 #[cfg(test)]
@@ -109,10 +102,7 @@ mod tests {
 
     impl StubBackend {
         fn new(select_response: Option<usize>) -> Arc<Self> {
-            Arc::new(Self {
-                calls: Mutex::new(Vec::new()),
-                select_response,
-            })
+            Arc::new(Self { calls: Mutex::new(Vec::new()), select_response })
         }
     }
 

@@ -44,8 +44,9 @@ impl<T> MultiSelectBuilder<T> {
             // Under the JSON frontend, dispatch through the installed
             // [`SelectorBackend`] which carries proper multi-select via
             // the `select_response` event (comma-separated values).
-            if let Some(backend) =
-                crate::comint::is_json().then(crate::backend::selector_backend).flatten()
+            if let Some(backend) = crate::comint::is_json()
+                .then(crate::backend::selector_backend)
+                .flatten()
             {
                 let defaults = vec![false; displays.len()];
                 let chosen = backend.multi(&self.message, &displays, &defaults)?;

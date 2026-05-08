@@ -109,13 +109,13 @@ clippy:
 clippy-fix:
     cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged
 
-# Format all Rust code
+# Format all Rust code (uses nightly to match CI; rustfmt.toml has nightly-only opts)
 fmt:
-    cargo fmt --all
+    cargo +nightly fmt --all
 
-# Check formatting without modifying files
+# Check formatting without modifying files (matches CI: autofix.yml uses +nightly)
 fmt-check:
-    cargo fmt --all -- --check
+    cargo +nightly fmt --all -- --check
 
 # Full lint pass: format check + clippy
 lint: fmt-check clippy
