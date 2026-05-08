@@ -1,7 +1,6 @@
 use std::io::{self, BufRead, BufReader, Write as _};
 use std::path::PathBuf;
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 
 use forge_api::Environment;
 
@@ -205,11 +204,11 @@ impl CominInput {
 /// - [`ClientEvent::Cancel`] → currently dropped; the surrounding loop
 ///   re-prompts. Wiring lands when in-flight cancellation is plumbed.
 /// - [`ClientEvent::SelectResponse`] is never observed here — the router
-///   forwards it directly to the matching pending selector instead. The
-///   variant is kept on the translation function to preserve the exhaustive
-///   match if a future router change relaxes routing.
-/// - [`ClientEvent::SetBuffer`] → buffered and emitted as a status event
-///   on the next prompt cycle.
+///   forwards it directly to the matching pending selector instead. The variant
+///   is kept on the translation function to preserve the exhaustive match if a
+///   future router change relaxes routing.
+/// - [`ClientEvent::SetBuffer`] → buffered and emitted as a status event on the
+///   next prompt cycle.
 ///
 /// The router thread closing the channel (e.g. on EOF) returns
 /// [`AppCommand::Exit`] from `prompt`.
@@ -263,11 +262,8 @@ impl JsonInput {
         // Flush any pending prefill so the JSON client can mirror it back
         // into its input area.
         if let Some(pending) = self.prefill.lock().unwrap().take() {
-            let event = ServerEvent::Status {
-                v: PROTOCOL_VERSION,
-                level: "prefill".into(),
-                text: pending,
-            };
+            let event =
+                ServerEvent::Status { v: PROTOCOL_VERSION, level: "prefill".into(), text: pending };
             emit_event(&event)?;
         }
 
@@ -336,8 +332,8 @@ impl JsonInput {
 /// Writes a single [`ServerEvent`] to stdout as one NDJSON line and flushes.
 ///
 /// Used by [`JsonInput`] for out-of-band events (errors, prefill status).
-/// The full streaming pipeline goes through [`crate::frontend::JsonConsoleWriter`]
-/// (forthcoming) instead of this helper.
+/// The full streaming pipeline goes through
+/// [`crate::frontend::JsonConsoleWriter`] (forthcoming) instead of this helper.
 fn emit_event(event: &ServerEvent) -> anyhow::Result<()> {
     let line = serde_json::to_string(event)?;
     let mut out = io::stdout().lock();
@@ -415,11 +411,8 @@ mod tests {
         let command = Arc::new(ForgeCommandManager::default());
         let json = JsonInput::new_disconnected(command);
 
-        let event = ClientEvent::SetBuffer {
-            v: PROTOCOL_VERSION,
-            id: "c2".into(),
-            text: "draft".into(),
-        };
+        let event =
+            ClientEvent::SetBuffer { v: PROTOCOL_VERSION, id: "c2".into(), text: "draft".into() };
         let actual = json.translate(event).unwrap();
         assert_eq!(actual, None);
         assert_eq!(
@@ -433,11 +426,8 @@ mod tests {
         let command = Arc::new(ForgeCommandManager::default());
         let json = JsonInput::new_disconnected(command);
 
-        let event = ClientEvent::Cancel {
-            v: PROTOCOL_VERSION,
-            id: "c3".into(),
-            target: "t1".into(),
-        };
+        let event =
+            ClientEvent::Cancel { v: PROTOCOL_VERSION, id: "c3".into(), target: "t1".into() };
         let actual = json.translate(event).unwrap();
         assert_eq!(actual, None);
     }

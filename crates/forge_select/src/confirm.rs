@@ -40,8 +40,9 @@ impl ConfirmBuilder {
             // `select_response` event rather than as a stdin line. The
             // backend-less path falls through to the line-prompt
             // fallback used by plain comint and `TERM=dumb`.
-            if let Some(backend) =
-                crate::comint::is_json().then(crate::backend::selector_backend).flatten()
+            if let Some(backend) = crate::comint::is_json()
+                .then(crate::backend::selector_backend)
+                .flatten()
             {
                 return backend.confirm(&self.message, self.default);
             }

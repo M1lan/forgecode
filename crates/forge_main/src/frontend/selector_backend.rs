@@ -38,12 +38,9 @@ impl SelectorBackend for JsonSelectorBackend {
         options: &[String],
         default: Option<&str>,
     ) -> Result<Option<usize>> {
-        let response = self.0.request_select(
-            prompt,
-            options.to_vec(),
-            false,
-            default.unwrap_or(""),
-        )?;
+        let response =
+            self.0
+                .request_select(prompt, options.to_vec(), false, default.unwrap_or(""))?;
         Ok(response.and_then(|value| match_option(options, &value)))
     }
 
@@ -83,9 +80,9 @@ impl SelectorBackend for JsonSelectorBackend {
         default: Option<&str>,
         allow_empty: bool,
     ) -> Result<Option<String>> {
-        let response =
-            self.0
-                .request_select(prompt, Vec::new(), false, default.unwrap_or(""))?;
+        let response = self
+            .0
+            .request_select(prompt, Vec::new(), false, default.unwrap_or(""))?;
         Ok(response.and_then(|value| {
             if value.is_empty() && !allow_empty {
                 default.map(str::to_string)
@@ -101,12 +98,9 @@ impl SelectorBackend for JsonSelectorBackend {
             Some(false) => "no",
             None => "",
         };
-        let response = self.0.request_select(
-            prompt,
-            vec!["yes".into(), "no".into()],
-            false,
-            default_str,
-        )?;
+        let response =
+            self.0
+                .request_select(prompt, vec!["yes".into(), "no".into()], false, default_str)?;
         Ok(response.and_then(|value| parse_yes_no(&value, default)))
     }
 }

@@ -109,8 +109,9 @@ impl<T: 'static> SelectBuilder<T> {
             // structured `select` / `select_response` events. The
             // backend-less path keeps the line-prompt fallback for
             // plain comint and `TERM=dumb`.
-            let chosen = if let Some(backend) =
-                crate::comint::is_json().then(crate::backend::selector_backend).flatten()
+            let chosen = if let Some(backend) = crate::comint::is_json()
+                .then(crate::backend::selector_backend)
+                .flatten()
             {
                 backend.select(&self.message, &displays, None)?
             } else {

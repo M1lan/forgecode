@@ -18,10 +18,9 @@ use anyhow::Result;
 /// - `FORGE_FRONTEND=comint` or `FORGE_FRONTEND=json` — set by
 ///   `forge_main::main` after CLI / env resolution. This is the canonical
 ///   signal. Both dumb frontends route selectors through the line-prompt
-///   fallbacks below; the JSON frontend additionally emits a `select`
-///   event upstream (handled in `forge_main::frontend`), but the actual
-///   user response still arrives as a plain stdin line in the current
-///   wire format.
+///   fallbacks below; the JSON frontend additionally emits a `select` event
+///   upstream (handled in `forge_main::frontend`), but the actual user response
+///   still arrives as a plain stdin line in the current wire format.
 /// - `INSIDE_EMACS` containing the substring `comint` — set by Emacs
 ///   `make-comint-in-buffer` and friends.
 /// - `TERM=dumb` — generic dumb-terminal escape hatch.
@@ -64,10 +63,7 @@ pub fn is_json() -> bool {
 /// Re-prompts on invalid input. Designed for low-frequency, low-stakes
 /// selectors (e.g. provider picker, confirm-with-options) where the
 /// crossterm picker is unavailable.
-pub fn prompt_select_line(
-    message: &str,
-    options: &[String],
-) -> Result<Option<usize>> {
+pub fn prompt_select_line(message: &str, options: &[String]) -> Result<Option<usize>> {
     if options.is_empty() {
         return Ok(None);
     }
@@ -91,7 +87,10 @@ pub fn prompt_select_line(
         }
 
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("q") || trimmed.eq_ignore_ascii_case("quit") {
+        if trimmed.is_empty()
+            || trimmed.eq_ignore_ascii_case("q")
+            || trimmed.eq_ignore_ascii_case("quit")
+        {
             return Ok(None);
         }
 
@@ -104,14 +103,14 @@ pub fn prompt_select_line(
         }
 
         // Exact / case-insensitive label match.
-        if let Some(index) = options
-            .iter()
-            .position(|o| o.eq_ignore_ascii_case(trimmed))
-        {
+        if let Some(index) = options.iter().position(|o| o.eq_ignore_ascii_case(trimmed)) {
             return Ok(Some(index));
         }
 
-        println!("Invalid choice: {trimmed:?}. Enter a number 1-{}, the option text, or 'q' to cancel.", options.len());
+        println!(
+            "Invalid choice: {trimmed:?}. Enter a number 1-{}, the option text, or 'q' to cancel.",
+            options.len()
+        );
     }
 }
 
