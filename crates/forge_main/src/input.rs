@@ -34,8 +34,8 @@ pub enum UserInput {
     /// Dumb-terminal frontend: line-buffered stdin reads, plain prompt.
     Comint(CominInput),
     /// NDJSON line-protocol frontend: reads [`ClientEvent`]s from stdin and
-    /// emits [`ServerEvent`]s on stdout. Unstable; gated behind
-    /// `--frontend=json --unstable`. See `docs/frontend-protocol.md`.
+    /// emits [`ServerEvent`]s on stdout. Stable at v1; see
+    /// `docs/frontend-protocol.md`. Selected via `--frontend=json`.
     Json(JsonInput),
 }
 
