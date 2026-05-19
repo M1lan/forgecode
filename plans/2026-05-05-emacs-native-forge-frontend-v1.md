@@ -43,12 +43,12 @@ brew install emacs-plus@31 --with-xwidgets --with-dragon-icon \
 
 ---
 
-## Status (revised 2026-05-08)
+## Status (revised 2026-05-19)
 
 | Track | State | Notes |
 |---|---|---|
-| **A — comint frontend** | ✅ **shipped** | Branch `emacs-native-frontend-track-a`, commits `203427cfc` and `d08ad2d42`. Verified end‑to‑end. |
-| **B — JSON line protocol** | ✅ **shipped (behind `--unstable`)** | Same branch, commits `f5b336d43`, `5f16299e7`, `785ae4916`. Protocol v1, tool events, usage events, native selector round‑trip. 2621 tests green. |
+| **A — comint frontend** | ✅ **shipped** | `mymain`, commits `0cbcb1aa8` and `1d7cab1d1`. Verified end‑to‑end. |
+| **B — JSON line protocol** | ✅ **shipped (v1 GA)** | `mymain`, commits `16df28106`, `8e917813d`, `f08b8de66`. Protocol v1, tool events, usage events, native selector round‑trip. Promoted from `--unstable` to GA on 2026-05-19; the flag is now a back-compat no-op. |
 | **C — Emacs dynamic module (Forge)** | 🅿 **parked** | Track B over a local pipe is already <1 ms per event. See §4 for resumption guide. |
 | **D — Ghostty terminal in Emacs** | 🔧 **Phase 1 in progress** | C module built, reviewed, fixed (15 issues), benchmarked. `~/mysrc/emacs-ghostty-module/`. Next: `ghostty-term.el`. See §8. |
 | **E — Forge.el two-buffer UX** | 🆕 **next up** | The elisp client that consumes Track B's JSON protocol. ERC-style output+input buffers. See §9. |
@@ -584,10 +584,12 @@ Status: clean working tree, 2621 workspace tests pass, clippy clean.
 ```
 forge --frontend=tty                  # default, unchanged behaviour
 forge --frontend=comint               # for Emacs comint-mode / dumb terminals
-forge --frontend=json --unstable      # NDJSON line protocol; --unstable required
+forge --frontend=json                 # NDJSON line protocol (stable v1)
 INSIDE_EMACS=*comint* forge           # auto-selects comint
 TERM=dumb forge                       # auto-selects comint
 ```
+
+`--unstable` is accepted as a no-op for back-compat with v0 scripts.
 
 Wire format reference: `docs/frontend-protocol.md`.
 
@@ -622,15 +624,15 @@ The natural next elisp tasks (separate from this Rust repo, all in
 
 ```bash
 cd ~/mysrc/forgecode
-git checkout emacs-native-frontend-track-a
+git checkout mymain
 git status                                       # should be clean
-git log --oneline -6                             # should match §7.2
+git log --oneline -10                            # should show Track A+B commits
 
 # Confirm both frontends still work end-to-end
 cargo build -p forge_main --bin forge
 echo '/exit' | ./target/debug/forge --frontend=comint | head -5
 printf '{"kind":"command","v":1,"id":"r1","name":"exit"}\n' \
-    | ./target/debug/forge --frontend=json --unstable
+    | ./target/debug/forge --frontend=json
 
 # Confirm tests still green
 cargo test --workspace --lib 2>&1 | rg "test result:" | tail -5
@@ -642,9 +644,8 @@ If any of those fail, something rotted in main; rebase before continuing.
 
 1. **Land an elisp client** (`forge-comint.el` or `forge.el`) so this work is
    actually used day‑to‑day. Highest value per hour.
-2. **Promote Track B from `--unstable` to GA**: stabilise the protocol at
-   v1, drop the `--unstable` gate, ship a release. Requires ~2 weeks of
-   dogfooding first.
+2. ✅ **Promote Track B from `--unstable` to GA**: done on 2026-05-19. The
+   protocol is stable at v1; `--unstable` is a back-compat no-op.
 3. **Un‑park Track C** only if one of the §4 revival triggers fires.
 
 ### 7.7 Decisions already locked in (don't relitigate)
@@ -653,7 +654,7 @@ If any of those fail, something rotted in main; rebase before continuing.
   in `crates/forge_main/src/cli.rs:99-167`.)
 - **JSON protocol = NDJSON**, one event per line, `kind`‑tagged. v1.
   Versioning bumped on incompatible change.
-- **JSON is opt‑in only** behind `--unstable`. Auto‑detect never selects it.
+- **JSON is opt‑in only** via `--frontend=json`. Auto‑detect never selects it.
 - **Selector backend is global**, installed once at startup via
   `forge_select::install_selector_backend`. One frontend per process.
 - **Stdin is single‑owner under JSON**: the `EventRouter` background thread
@@ -843,7 +844,7 @@ Track E extends this — does NOT greenfield.
 - [ ] Write `forge-json.el` — NDJSON process filter that parses `ServerEvent`s
 - [ ] Write `forge-output-mode` — `special-mode` derivative for the output buffer; markdown fontification via `markdown-mode` faces; tool calls as collapsible overlays; file mentions as buttons
 - [ ] Write `forge-input-mode` — `text-mode` derivative; `C-c C-c` sends, `C-c C-k` cancels, `M-p`/`M-n` history
-- [ ] Wire `make-process` to `forge --frontend=json --unstable` with the NDJSON filter
+- [ ] Wire `make-process` to `forge --frontend=json` with the NDJSON filter
 - [ ] Handle `select` events → `read-multiple-choice` or `transient` menu → send `select_response`
 - [ ] Display `usage` events in the mode-line (tokens, cost)
 - [ ] Layout: `display-buffer-in-side-window` (input 5-line bottom, output fills rest)

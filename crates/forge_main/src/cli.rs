@@ -88,10 +88,11 @@ pub struct Cli {
 
     /// Opt in to unstable protocol surfaces.
     ///
-    /// Required to use `--frontend=json` while the protocol is still in `v0`.
-    /// Without this flag, selecting an unstable frontend exits with an error
-    /// before any output is produced. Hidden from `--help` to keep the public
-    /// surface small.
+    /// Historically required to use `--frontend=json` while the wire
+    /// protocol was in `v0`. The protocol is now stable at `v1` (see
+    /// `docs/frontend-protocol.md`); this flag is retained as a no-op for
+    /// back-compat with scripted callers and is hidden from `--help`. It
+    /// may be removed in a future major version.
     #[arg(long, hide = true, default_value_t = false)]
     pub unstable: bool,
 }
@@ -108,7 +109,8 @@ pub enum FrontendMode {
     /// Dumb-terminal frontend for Emacs comint and similar shells.
     Comint,
     /// NDJSON line protocol over stdin/stdout for editor embedding.
-    /// Unstable — requires `--unstable` until protocol promotes from v0 to v1.
+    /// Stable at v1; see `docs/frontend-protocol.md`. Opt-in only; never
+    /// auto-selected (auto-detection picks `tty` or `comint`).
     Json,
 }
 
@@ -134,12 +136,6 @@ impl FrontendMode {
         !matches!(self, Self::Tty)
     }
 
-    /// Returns `true` when the frontend's protocol surface is unstable and
-    /// gated behind `--unstable`. Currently this only covers `json`.
-    pub fn is_unstable(self) -> bool {
-        matches!(self, Self::Json)
-    }
-
     /// Resolves the frontend mode from the CLI flag, falling back to
     /// environment-based auto-detection when the flag is omitted.
     ///
@@ -149,7 +145,7 @@ impl FrontendMode {
     /// - Otherwise -> `Tty`
     ///
     /// `Json` is never auto-selected; it must be opted in with
-    /// `--frontend=json --unstable`.
+    /// `--frontend=json`.
     pub fn resolve(flag: Option<FrontendMode>) -> FrontendMode {
         if let Some(mode) = flag {
             return mode;
@@ -2194,13 +2190,6 @@ mod tests {
     }
 
     #[test]
-    fn test_frontend_mode_is_unstable() {
-        assert!(FrontendMode::Json.is_unstable());
-        assert!(!FrontendMode::Tty.is_unstable());
-        assert!(!FrontendMode::Comint.is_unstable());
-    }
-
-    #[test]
     fn test_unstable_flag_default_false() {
         let fixture = Cli::parse_from(["forge"]);
         assert_eq!(fixture.unstable, false);
@@ -2208,7 +2197,18 @@ mod tests {
 
     #[test]
     fn test_unstable_flag_set() {
+        // Back-compat: `--unstable` is now a no-op but must still parse so
+        // scripted callers from the v0 era keep working.
         let fixture = Cli::parse_from(["forge", "--unstable"]);
         assert_eq!(fixture.unstable, true);
+    }
+
+    #[test]
+    fn test_json_frontend_parses_without_unstable() {
+        // GA: `--frontend=json` is selectable without the `--unstable` opt-in
+        // since the protocol promoted to v1.
+        let fixture = Cli::parse_from(["forge", "--frontend", "json"]);
+        assert_eq!(fixture.frontend, Some(FrontendMode::Json));
+        assert_eq!(fixture.unstable, false);
     }
 }

@@ -13,17 +13,18 @@ compatibility bump the protocol version.
 ## Status
 
 - **Version**: `v1`
-- **Stability**: unstable while we iterate; `--frontend=json` requires
-  `--unstable` to opt in. The flag will be lifted once the schema has
-  stabilised in real-world editor integrations (target window: ~4 weeks
-  after first usable Emacs client).
+- **Stability**: **stable**. Schema additions (new event kinds, new
+  optional fields) ship non-breakingly under `v: 1`; breaking changes bump
+  the version. The historical `--unstable` opt-in flag is now a no-op,
+  kept for back-compat with scripted callers and may be removed in a
+  future major version.
 - **Source of types**: `crates/forge_main/src/frontend/protocol.rs`. The Rust
   types are the canonical definition; this document mirrors them.
 
 ## Invocation
 
 ```
-forge --frontend=json --unstable
+forge --frontend=json
 ```
 
 Auto-detection never picks `json`; it is always opt-in. The piped-stdin

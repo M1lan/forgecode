@@ -96,15 +96,11 @@ async fn run() -> Result<()> {
     // spinner and selectors.
     let frontend = FrontendMode::resolve(cli.frontend);
 
-    // Gate unstable frontends behind --unstable. This must run before any
-    // output so the JSON wire stays clean if --unstable is missing.
-    if frontend.is_unstable() && !cli.unstable {
-        anyhow::bail!(
-            "frontend `{:?}` is unstable; pass --unstable to opt in (\
-             see docs/frontend-protocol.md)",
-            frontend
-        );
-    }
+    // `--unstable` was the v0 opt-in for `--frontend=json`. The protocol is
+    // now stable at v1 (see `docs/frontend-protocol.md`), so the flag is
+    // accepted as a no-op for back-compat with scripted callers. It is
+    // hidden from `--help` and may be removed in a future major version.
+    let _ = cli.unstable;
 
     if frontend.is_dumb() {
         // Globally disable `colored` ANSI escapes. Comint renders bare

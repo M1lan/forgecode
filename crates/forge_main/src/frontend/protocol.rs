@@ -8,11 +8,12 @@
 //!
 //! # Stability
 //!
-//! The whole module is **unstable**. While the binary is in `v0` the protocol
-//! is gated behind `--frontend=json --unstable` (see
-//! [`crate::cli::Cli::unstable`]). When the protocol promotes to `v1`, the
-//! constants below stay; new events are added under `v: 1` and breaking
-//! changes are bumped to `v: 2`.
+//! The protocol is **stable at v1**. The constants below are part of the
+//! public wire contract; breaking changes bump the `v` field. Additive
+//! changes (new event kinds, new optional fields) ship under the existing
+//! `v: 1` and clients are required to tolerate them (see the forward
+//! compatibility rules below). The historical `--unstable` flag is now a
+//! no-op kept for script back-compat.
 //!
 //! # Forward compatibility
 //!
