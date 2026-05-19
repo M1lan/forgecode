@@ -1098,6 +1098,36 @@ MCP tools can be used as part of multi-agent workflows, allowing specialized age
 
 ---
 
+## Fork Notes (`mymain` vs `main`)
+
+This repository is a fork. The default working branch is **`mymain`**, which
+is a strict superset of upstream **`main`** (`antinomyhq/forgecode`). As of
+2026-05-19, `mymain` adds:
+
+- `Justfile` -- local developer task runner (build, test, lint, fzf workflows).
+- `cli` -- forked POSIX-sh installer that fixes a bug where the upstream
+  installer would clobber existing shell RC files even when `~/.local/bin`
+  was already on `PATH`.
+- `plans/2026-05-05-emacs-native-forge-frontend-v1.md` -- planning document
+  for an experimental Emacs-native Forge frontend (not shipped in the
+  binary).
+- A one-character whitespace fix in `crates/forge_main/src/info.rs:78`.
+
+There are **zero** commits in upstream `main` that are not in `mymain`, and
+the compiled `forge` binary is behaviourally identical between the two
+branches. See [`docs/fork-differences.md`](docs/fork-differences.md) for the
+exact commit list, per-file diff, and rationale.
+
+Reproduce the comparison locally with:
+
+```bash
+git fetch origin
+git log --oneline main..mymain
+git diff --stat main..mymain
+```
+
+---
+
 ## Documentation
 
 For comprehensive documentation on all features and capabilities, please visit the [documentation site](https://github.com/tailcallhq/forgecode/tree/main/docs).
