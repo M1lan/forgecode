@@ -19,12 +19,14 @@
 
 | Path | Role |
 |---|---|
-| `~/mysrc/forgecode/` | Forge source (branch `emacs-native-frontend-track-a`) |
-| `~/mysrc/emacs/` | GNU Emacs source (branch `mymain`, up-to-date) |
-| `~/mysrc/ghostty/` | Ghostty terminal source (includes libghostty, libghostty-vt) |
-| `~/mysrc/ghostling/` | Minimal single-file C terminal on libghostty-vt + Raylib — **reference impl** for Emacs integration |
-| `~/mysrc/homebrew-emacs-plus/` | Homebrew formula (branch `mymain`) |
-| `~/.emacs.d/` | User's Emacs configuration (`lisp/forge-*.el`) |
+| `~/mysrc/forgecode/` | Forge source (branch `mymain`, Track A+B shipped) |
+| `~/mysrc/emacs/` | GNU Emacs source (branch `mymain`, `ghostty-term` integrated in-tree) |
+| `~/mysrc/ghostty/` | Ghostty terminal source (branch `feat/my-ghostty`); supplies `libghostty-vt` |
+| `~/mysrc/ghostling/` | Reference C terminal on libghostty-vt + Raylib (now with Kitty graphics support) |
+| `~/mysrc/emacs-ghostty-module/` | **Historical** — Track D Phase 1 standalone dynamic module. Content now lives in Emacs source tree; copy also in `~/.emacs.d/lisp/experiments/`. Not a git repo. |
+| `~/mysrc/homebrew-emacs-plus/` | Homebrew formula (branch `mymain`); `Formula/emacs-plus-mymain.rb` builds from local source |
+| `~/.emacs.d/lisp/ai/forge/` | User's `forge-*.el` (12 files, 3940 lines) — currently eat / one-shot based |
+| `~/.emacs.d/lisp/experiments/` | Track D Phase 1 archive (`ghostty-term-module.dylib` + `.el`) |
 | `~/forge/` | Forge runtime configuration |
 
 ## Current build command (reference)
@@ -48,11 +50,12 @@ brew install emacs-plus@31 --with-xwidgets --with-dragon-icon \
 | Track | State | Notes |
 |---|---|---|
 | **A — comint frontend** | ✅ **shipped** | `mymain`, commits `0cbcb1aa8` and `1d7cab1d1`. Verified end‑to‑end. |
-| **B — JSON line protocol** | ✅ **shipped (v1 GA)** | `mymain`, commits `16df28106`, `8e917813d`, `f08b8de66`. Protocol v1, tool events, usage events, native selector round‑trip. Promoted from `--unstable` to GA on 2026-05-19; the flag is now a back-compat no-op. |
-| **C — Emacs dynamic module (Forge)** | 🅿 **parked** | Track B over a local pipe is already <1 ms per event. See §4 for resumption guide. |
-| **D — Ghostty terminal in Emacs** | 🔧 **Phase 1 in progress** | C module built, reviewed, fixed (15 issues), benchmarked. `~/mysrc/emacs-ghostty-module/`. Next: `ghostty-term.el`. See §8. |
-| **E — Forge.el two-buffer UX** | 🆕 **next up** | The elisp client that consumes Track B's JSON protocol. ERC-style output+input buffers. See §9. |
-| **F — Homebrew formula integration** | 🆕 **pending** | Modify `emacs-plus@mymain` formula to build with libghostty-vt + install forge binary. See §10. |
+| **B — JSON line protocol** | ✅ **shipped (v1 GA)** | `mymain`, commits `16df28106`, `8e917813d`, `f08b8de66`, plus `d12650f1d` (GA promotion 2026-05-19). Protocol v1, tool events, usage events, native selector round‑trip. `--unstable` is now a back-compat no-op. |
+| **C — Emacs dynamic module (Forge)** | 🅿 **parked** | Track B over a local pipe is already <1 ms per event. See §4 for revival triggers. |
+| **D Phase 1 — Ghostty as Emacs dynamic module** | ✅ **shipped & archived** | Standalone `.dylib` (1.5 MB) at `~/.emacs.d/lisp/experiments/ghostty-term-module.dylib`. Original source at `~/mysrc/emacs-ghostty-module/` (not a git repo anymore). Superseded by Phase 2. |
+| **D Phase 2 — Ghostty in Emacs source tree** | ✅ **shipped** | `~/mysrc/emacs/` commits `cec0cae646a` (initial in-tree integration) and `3a836ddd935` (bash-minimal diagnostic). `configure.ac` `--with-ghostty-term[=DIR]`, `src/Makefile.in` wires `GHOSTTY_TERM_OBJ`/`_CFLAGS`/`_LIBS`, `src/emacs.c` calls `syms_of_ghostty_term()`. C: 950 lines (`src/ghostty-term.c`). Elisp: 871 lines (`lisp/ghostty-term.el`). Active polish on colour / shell-init garbling. |
+| **E — forge.el two-buffer UX** | 🔧 **foundation in place, JSON wiring pending** | `~/.emacs.d/lisp/ai/forge/` has 12 files / 3940 lines: session manager (`forge-code.el`, eat-based), HUD-style output major mode (`forge-output.el`, 667 lines), modeline, transient, prompt, agent client, conversations, orchestration, reply, skills. **None of them yet consume `--frontend=json` or `--frontend=comint`** — they still drive `forge -p ...` (one-shot) or `forge` via `eat`. Phase 2 of Track E is the actual JSON-protocol consumer. See §9. |
+| **F — Homebrew formula integration** | 🔧 **formula scaffolded, ghostty-term wiring pending** | `~/mysrc/homebrew-emacs-plus/Formula/emacs-plus-mymain.rb` builds from local `~/mysrc/emacs` source. Auto-detects version from `configure.ac`. Build presets (`stable`/`perf`/`debug`/`ricer`) selectable via `EMACS_MYMAIN_PRESET`. **Missing**: `--with-ghostty-term=$HOME/mysrc/ghostty` passthrough + libghostty-vt build dep. See §10. |
 
 → **If resuming, jump to [§7 Resumption Guide](#7-resumption-guide).**
 
@@ -567,17 +570,24 @@ need to remember is here.
 
 ### 7.2 Branch state (commit walk)
 
-Branch: `emacs-native-frontend-track-a` (5 commits ahead of `mymain`).
+All Track A + B work is on **`mymain`** as of 2026-05-19. The feature branch
+`emacs-native-frontend-track-a` is preserved as a historical anchor at the
+same tip.
 
 ```
-785ae4916 feat(forge_main,forge_select): wire native selector round-trip + emit_usage  ← Track B selector + usage
-5f16299e7 feat(forge_main): wire json frontend lifecycle and chunk redirect            ← Track B lifecycle wiring
-f5b336d43 feat(forge_main): json frontend foundation (protocol + adapters)             ← Track B foundation
-d08ad2d42 fix(forge_main): skip hydrate_caches under comint frontend                   ← Track A polish
-203427cfc feat(forge_main): comint frontend mode for Emacs and dumb terminals          ← Track A
+d12650f1d feat(forge_main): promote JSON frontend protocol to v1 GA       ← Track B GA
+825234b84 chore: ignore .grepai/ local cache directory
+a49a6fe64 update plan
+b723f4b89 update!
+b06539b18 docs(plan): mark Tracks A+B shipped, park Track C, add resumption guide
+f08b8de66 feat(forge_main,forge_select): wire native selector round-trip + emit_usage  ← Track B selector + usage
+8e917813d feat(forge_main): wire json frontend lifecycle and chunk redirect            ← Track B lifecycle wiring
+16df28106 feat(forge_main): json frontend foundation (protocol + adapters)             ← Track B foundation
+1d7cab1d1 fix(forge_main): skip hydrate_caches under comint frontend                   ← Track A polish
+0cbcb1aa8 feat(forge_main): comint frontend mode for Emacs and dumb terminals          ← Track A
 ```
 
-Status: clean working tree, 2621 workspace tests pass, clippy clean.
+Status: clean working tree, 401/401 `forge_main` lib tests pass, clippy clean.
 
 ### 7.3 What ships today (CLI surface)
 
@@ -768,7 +778,7 @@ Strategy B (compile into Emacs).
 
 ### 8.6 Tasks (Track D — atomic, ordered)
 
-Phase 1: Standalone dynamic module (iterate fast)
+Phase 1: Standalone dynamic module (iterate fast) — **✅ SHIPPED & ARCHIVED**
 - [x] Build libghostty-vt: `zig build lib-vt -Doptimize=ReleaseFast` in `~/mysrc/ghostty/` (7.5 MB `.a`)
 - [x] Create module project: `~/mysrc/emacs-ghostty-module/` (Makefile + C source)
 - [x] Write `ghostty-term-module.c`: init, write, destroy, pty-fd, process, render, cursor, resize, scroll, key, check-child, version (1070 lines C)
@@ -782,19 +792,30 @@ Phase 1: Standalone dynamic module (iterate fast)
 - [x] Review round 2: critic (ITERATE) + code-reviewer (REQUEST CHANGES) found 6 critical + 8 warning issues
 - [x] Fix all issues: deferred module load, resize hook ref-counting, face cache eviction (4096 cap), nil handle guard, timer error protection, paint-row bounds check, C-c C-z/C-\/C-y bindings, login shell prefix, signal_error list format, C render nil-for-empty
 - [x] Byte-compile: zero warnings. Integration test: 15/15 pass (module lifecycle, render, key translation, face cache, instance counter)
-- [x] Installed to `~/.emacs.d/lisp/` (ghostty-term-module.dylib + ghostty-term.el)
-- [ ] Interactive test: restart Emacs, `M-x ghostty-term`, verify colors/input/htop/vim/tmux
-- [ ] Add mouse click/drag support (mouse encoder integration)
-- [ ] Add CJK/wide-character face alignment
+- [x] Installed to `~/.emacs.d/lisp/experiments/` (ghostty-term-module.dylib + ghostty-term.el)
+- [x] Interactive test: superseded by Phase 2 (in-tree build is now the primary path)
 
-Phase 2: Compile into Emacs source tree (Strategy B)
-- [ ] Copy `ghostty-term-module.c` → `~/mysrc/emacs/src/ghostty-term.c`
-- [ ] Patch `~/mysrc/emacs/src/Makefile.in` to compile and link `ghostty-term.c` + `libghostty_vt.a`
-- [ ] Patch `~/mysrc/emacs/configure.ac` to add `--with-ghostty-term` flag
-- [ ] Convert module API calls (`env->make_*`) to native Lisp_Object / DEFUN macros
-- [ ] Integrate with Emacs process/PTY infrastructure (`process.c` patterns)
-- [ ] Move `ghostty-term.el` to `~/mysrc/emacs/lisp/ghostty-term.el`
-- [ ] Verify: `./configure --with-ghostty-term && make && src/emacs -Q -e '(ghostty-term)'`
+Phase 1 follow-ups parked (now lower priority since Phase 2 shipped):
+- [ ] Add mouse click/drag support (mouse encoder integration) — move work into Phase 2 source instead
+- [ ] Add CJK/wide-character face alignment — ditto
+
+Phase 2: Compile into Emacs source tree (Strategy B) — **✅ SHIPPED**
+- [x] Copy `ghostty-term-module.c` → `~/mysrc/emacs/src/ghostty-term.c` (now 950 lines after refactor)
+- [x] Add `~/mysrc/emacs/src/ghostty-term.h` (939 B) declaring `syms_of_ghostty_term()`
+- [x] Patch `~/mysrc/emacs/src/Makefile.in` to compile and link `ghostty-term.o` with `GHOSTTY_TERM_CFLAGS` / `GHOSTTY_TERM_LIBS` (commit `cec0cae646a`)
+- [x] Patch `~/mysrc/emacs/configure.ac` to add `--with-ghostty-term[=DIR]` flag with `AC_CHECK_HEADER` / `AC_CHECK_LIB` probes for `ghostty/vt.h` and `libghostty-vt`; prefers static linking; adds CoreFoundation on macOS (lines 648-4525)
+- [x] Patch `~/mysrc/emacs/src/emacs.c` to conditionally include `ghostty-term.h` and call `syms_of_ghostty_term()`
+- [x] Convert module API calls (`env->make_*`) to native Lisp_Object / DEFUN macros
+- [x] Move `ghostty-term.el` to `~/mysrc/emacs/lisp/ghostty-term.el` (now 871 lines)
+- [x] Verify: `./configure --with-ghostty-term=$HOME/mysrc/ghostty && make` produces a working build; `M-x ghostty-term` launches inside the built Emacs
+- [x] Add `M-x ghostty-term-bash-minimal` diagnostic entry point (`--norc --noprofile` shell via wrapper script) for isolating shell-config vs. terminal-emulator garbling (commit `3a836ddd935`)
+- [x] Default colour inversion fix (commit `7190b54efe1`)
+
+Phase 2 polish (in flight — in `~/mysrc/emacs/`, not in this repo):
+- [ ] Investigate and fix any remaining garbled-output cases on real shells (zsh + Starship, tmux, ssh)
+- [ ] Wire mouse click/drag through `ghostty_terminal_mouse_event()`
+- [ ] CJK / wide-character face alignment (cell width != 1)
+- [ ] Decide whether to upstream the changes (or keep them mymain-local indefinitely)
 
 ### 8.7 Key design decisions for Track D
 
@@ -831,27 +852,62 @@ Phase 2: Compile into Emacs source tree (Strategy B)
 > consuming Track B's `--frontend=json`. Output buffer (read-only, markdown-
 > fontified, tool calls as collapsible blocks) + input buffer (full Emacs
 > editing, `C-c C-c` to send). Replaces the current `eat`-based
-> `forge-code.el`.
+> `forge-code.el` interactive path.
 
-### 9.1 Relationship to existing elisp
+### 9.1 Current state (2026-05-19)
 
-`~/.emacs.d/lisp/forge-code.el` v1.0.0 already provides session management,
-`C-c F` prefix, agent selection, `*forge:<agent>:<project>*` buffer naming.
-Track E extends this — does NOT greenfield.
+`~/.emacs.d/lisp/ai/forge/` (12 files, 3940 lines) currently contains:
 
-### 9.2 Tasks (Track E — ordered)
+| File | Lines | Role |
+|---|---|---|
+| `forge-code.el` | 638 | Session manager, agent dispatch, eat-based interactive sessions, one-shot via `-p` with ansi-color-on-region |
+| `forge-output.el` | 667 | **NEW** — `forge-output-mode` major mode for the *Forge CLI Output* buffer; OMC HUD‑inspired modeline with session stats, process state, sub‑agent activity, optional braille spinner; clickable segments. Still consumes the *raw* one-shot stdout via `ansi-color`, not the JSON wire. |
+| `forge-prompt.el` | 595 | Prompt construction, `make-process` for non-eat invocations |
+| `forge-integration.el` | 409 | Cross-cutting glue |
+| `forge-agent-client.el` | 309 | Direct agent invocation (sync/async) |
+| `forge-conversations.el` | 303 | Conversation history navigation |
+| `forge-orchestration.el` | 279 | Multi-agent orchestration |
+| `forge-skills.el` | 278 | Skill discovery and invocation |
+| `forge-transient.el` | 205 | Magit-style transient menus |
+| `forge-reply.el` | 150 | `forge-reply-show` org-mode display |
+| `forge-modeline.el` | 107 | Modeline helpers |
 
-- [ ] Write `forge-json.el` — NDJSON process filter that parses `ServerEvent`s
-- [ ] Write `forge-output-mode` — `special-mode` derivative for the output buffer; markdown fontification via `markdown-mode` faces; tool calls as collapsible overlays; file mentions as buttons
-- [ ] Write `forge-input-mode` — `text-mode` derivative; `C-c C-c` sends, `C-c C-k` cancels, `M-p`/`M-n` history
-- [ ] Wire `make-process` to `forge --frontend=json` with the NDJSON filter
-- [ ] Handle `select` events → `read-multiple-choice` or `transient` menu → send `select_response`
-- [ ] Display `usage` events in the mode-line (tokens, cost)
-- [ ] Layout: `display-buffer-in-side-window` (input 5-line bottom, output fills rest)
-- [ ] Integrate with existing `forge-code.el` session management (reuse buffer naming, keybindings, agent switching)
-- [ ] Test end-to-end: start forge.el, submit a turn, see streaming output, handle a tool call selector, see usage stats
+**What's there:** strong major-mode foundation (`forge-output-mode`), session
+management, transient UX, modeline.
+**What's missing:** an NDJSON parser, a process driver that uses
+`--frontend=json`, and an input buffer paired with the output buffer.
 
-### 9.3 Risk
+### 9.2 Relationship to existing elisp
+
+Track E extends the existing `~/.emacs.d/lisp/ai/forge/` package. The new
+files below land in the same directory. The existing `forge-code.el` eat
+path stays as a fallback (some users may prefer the raw terminal); the new
+`forge-chat` becomes the recommended entry point once it ships.
+
+### 9.3 Tasks (Track E — ordered)
+
+Phase 1 — NDJSON consumer (new code):
+- [ ] Write `forge-json.el` — NDJSON line buffer + `ServerEvent` dispatcher; tolerate partial UTF-8 across `process-filter` chunks; emit a per-event hook (`forge-json-event-functions`)
+- [ ] Wire `make-process` to `forge --frontend=json` (no `--unstable`; the flag is GA as of 2026-05-19)
+- [ ] Test: drive a no-op turn (`{kind:submit,text:"hi"}`) end to end; observe `ready` → `turn_start` → chunks → `turn_end`
+
+Phase 2 — Two-buffer UX:
+- [ ] Adapt `forge-output-mode` to subscribe to the new `forge-json-event-functions` hook — paint chunks, fontify markdown via `markdown-mode` faces, render tool calls as collapsible overlays, render file mentions as buttons. Reuse the HUD modeline as-is.
+- [ ] Write `forge-input-mode` — `text-mode` derivative; `C-c C-c` sends `{kind:submit}`, `C-c C-k` sends `{kind:cancel}` with active `turn_id`, `M-p`/`M-n` history
+- [ ] Layout: `display-buffer-in-side-window` (input 5-line bottom, output fills rest); persist window config
+
+Phase 3 — Wire-protocol coverage:
+- [ ] Handle `select` events → `read-multiple-choice` or `transient` menu → send `{kind:select_response}`
+- [ ] Display `usage` events in the mode-line (tokens, cost) — plumb into the existing HUD
+- [ ] Handle `error` events — surface as `message` + bold red overlay in output buffer
+- [ ] Handle `status` events at `level: prefill` — `(insert)` into input buffer
+
+Phase 4 — Polish:
+- [ ] `M-x forge-chat` entry point (replaces `forge-code` for interactive use; eat path stays as `forge-code-eat`)
+- [ ] Integrate with existing `forge-code.el` session management: reuse buffer naming `*forge:<agent>:<project>*`, `C-c F` prefix, agent switching, conversation IDs
+- [ ] Test end-to-end on a real chat: streaming output, tool-call selector, usage stats, cancel, multi-turn
+
+### 9.4 Risk
 
 Low. Track B wire protocol is already shipped and tested. This is pure elisp
 work consuming a stable NDJSON stream. Can be iterated without touching the
@@ -861,68 +917,92 @@ Rust side.
 
 ## 10. Track F — Homebrew Formula Integration
 
-> **Outcome**: `brew install emacs-plus@mymain` from
+> **Outcome**: `brew install emacs-plus-mymain` from
 > `~/mysrc/homebrew-emacs-plus/` produces an Emacs binary with:
 > - libghostty-vt statically linked (Track D Phase 2)
-> - `ghostty-term.el` in the site-lisp path
-> - `forge` binary installed alongside
+> - `ghostty-term.el` in the site-lisp path (already shipped in `~/mysrc/emacs/lisp/`)
+> - `forge` binary installed alongside (optional resource)
 
-### 10.1 Tasks (Track F — ordered)
+### 10.1 Current state (2026-05-19)
 
-- [ ] Modify `Formula/emacs-plus@31.rb` (or create `emacs-plus@mymain.rb`) to:
-  - Add Zig as a build dependency (for libghostty-vt)
-  - Clone/fetch ghostty source at the pinned commit
-  - Run `zig build lib-vt -Doptimize=ReleaseFast`
-  - Pass `--with-ghostty-term` to `./configure` (once Track D Phase 2 lands)
-- [ ] Add a `forge` resource block that downloads the forge binary (or builds from source if Rust toolchain is available)
-- [ ] Install `forge-*.el` and `ghostty-term.el` to `#{share}/emacs/site-lisp/`
-- [ ] Test: `brew install --build-from-source emacs-plus@mymain` produces a working Emacs with both features
-- [ ] Document the custom build flags in the formula
+`~/mysrc/homebrew-emacs-plus/Formula/emacs-plus-mymain.rb` exists (12.3 KB).
+Highlights:
 
-### 10.2 Dependencies
+- **Local source build**: `url "file://#{MYMAIN_SRC}", :using => :git, :branch => "mymain"` where `MYMAIN_SRC = ~/mysrc/emacs`
+- **Auto-versioning**: parses `AC_INIT([GNU Emacs], [...])` from `configure.ac` so the Cellar path always matches the compiled binary's embedded paths
+- **Build presets**: `EMACS_MYMAIN_PRESET=<name>` selects:
+  - `stable` — `-O2`, no LTO (safest for daily use)
+  - `perf` — `-O3`, `-march=native`, thin LTO (default)
+  - `debug` — `-O0 -g3`, all checking, frame pointers, dSYM generation
+  - `ricer` — `-O3`, `-march=native`, full LTO, omit frame pointers
+- **Standard deps**: gnutls, jansson, librsvg, little-cms2, tree-sitter, webp, libgccjit, gcc, sqlite, etc.
+- Active uncommitted changes: drop deprecated `--with-imagemagick`, drop `--with-dragon-icon` from `default_brew_opts`, replace `sed` with `gsed` in `Justfile`
 
-Track F depends on:
-- Track D Phase 2 (ghostty-term compiled into Emacs source)
-- Track E (forge.el files to install)
+### 10.2 Remaining tasks (Track F — ordered)
+
+Ghostty integration (the actually-missing piece):
+- [ ] Add `depends_on "zig" => :build` (or detect a usable Zig at build time)
+- [ ] During `install`, build libghostty-vt: `cd $HOME/mysrc/ghostty && zig build lib-vt -Doptimize=ReleaseFast` (or check for a pre-built `~/mysrc/ghostty/zig-out/lib/libghostty_vt.a`)
+- [ ] Pass `--with-ghostty-term=#{ENV["HOME"]}/mysrc/ghostty` to `./configure` (or a configurable `GHOSTTY_SRC_DIR`)
+- [ ] Document the dependency on a local `~/mysrc/ghostty/` checkout in the formula description; consider a fallback that clones it to a build-private dir
+- [ ] Add a smoke test in `test do` that launches the built Emacs with `--with-ghostty-term` enabled and runs `(featurep 'ghostty-term)` → expect `t`
+
+Forge integration (optional resource):
+- [ ] Add a `resource "forge"` block that builds the `forge` binary from `~/mysrc/forgecode` (or downloads a tagged release once one exists)
+- [ ] Install to `#{bin}/forge`
+- [ ] Install `~/.emacs.d/lisp/ai/forge/*.el` files to `#{share}/emacs/site-lisp/forge/` (only once Track E ships and there is a stable elisp surface to package)
+
+Distribution polish:
+- [ ] Optional `bottle` block once the formula stabilises
+- [ ] Test: `brew install --build-from-source emacs-plus-mymain` on a clean machine; `M-x ghostty-term` works out of the box
+
+### 10.3 Dependencies
+
+Track F's ghostty wiring depends on:
+- ✅ Track D Phase 2 (ghostty-term compiled into Emacs source) — done
+- A reachable `~/mysrc/ghostty/` checkout at install time (or a vendored copy)
+
+Track F's forge resource depends on:
+- Track E shipping a stable elisp surface (so we know which files to install)
 - A tagged forge release (or local build)
 
-### 10.3 Risk
+### 10.4 Risk
 
-Medium. Homebrew formulas have strict conventions. Adding Zig as a build
-dependency and a multi-step build (ghostty → Emacs) increases formula
-complexity. May need to pre-build the static lib and distribute it as a
-bottle.
+Medium-low. The formula scaffold is done; the remaining work is a Zig
+build-step + a `--with-ghostty-term` configure flag, both well-defined. The
+forge resource block is straightforward once Track E settles its public file
+list.
 
 ---
 
 ## 11. Execution order and dependencies
 
 ```
-Track A ─── ✅ done
-Track B ─── ✅ done
-                                    ┌─→ Track E (forge.el UX) ──────┐
-                                    │                               │
-                                    │   Track D Phase 1 (module) ───┤
-                                    │     │                         │
-                                    │     ▼                         │
-                                    │   Track D Phase 2 (in-tree) ──┤
-                                    │                               │
-                                    └───────────────────────────────┘
-                                                    │
-                                                    ▼
-                                            Track F (homebrew)
+Track A ─── ✅ done (mymain)
+Track B ─── ✅ done, v1 GA (mymain)
+Track D Phase 1 ─── ✅ C module + elisp shipped in ~/mysrc/emacs (mymain)
+Track D Phase 2 ─── ✅ in-tree integration shipped in ~/mysrc/emacs (mymain)
+
+                Track E (forge-output.el → forge-json.el → 2-buffer UX)
+                                    │
+                                    ▼
+                            Track F (homebrew: ghostty wiring + forge resource)
+
 Track C ─── 🅿 parked (independent, unblock only if B proves insufficient)
 ```
 
-**Recommended execution order:**
-1. **Track D Phase 1** — standalone dynamic module. This is the most
-   technically uncertain piece and needs to be de-risked first. Can be
-   done in parallel with Track E.
-2. **Track E** — forge.el two-buffer UX. Pure elisp, no Emacs recompilation
-   needed. Highest daily-use value. Can be done in parallel with Track D.
-3. **Track D Phase 2** — migrate module into Emacs source tree. Do this once
-   the dynamic module is working and the API is stable.
-4. **Track F** — homebrew formula. Final integration step; depends on D2+E.
+**Recommended execution order (2026-05-19):**
+1. ~~Track D Phase 1~~ ✅ done — `ghostty-term.c` + `ghostty-term.el` live in
+   `~/mysrc/emacs/` on `mymain`.
+2. ~~Track D Phase 2~~ ✅ done — module is in-tree, built by the standard
+   Emacs build.
+3. **Track E** — `forge-output.el` foundation exists in
+   `~/.emacs.d/lisp/ai/forge/`; remaining work is writing `forge-json.el`
+   (NDJSON consumer) and wiring the two-buffer UX. **Highest day-to-day-use
+   value; do this next.**
+4. **Track F** — homebrew formula scaffold exists in
+   `~/mysrc/homebrew-emacs-plus/`; add ghostty Zig build step and
+   `--with-ghostty-term` configure flag, then optional forge resource.
 
 ### Future: TOON as alternative wire format (low priority)
 
@@ -960,8 +1040,9 @@ real usage data on which event kinds are token-heavy. Not before.
 
 ---
 
-**Next immediate action:** Write `ghostty-term.el` (Track D Phase 1 remaining
-task) — the C module is verified and fast. This is a pure-elisp task:
-major mode, timer-driven render loop, input dispatch, face painting.
-Track E can begin in parallel since it's independent.
+**Next immediate action (2026-05-19):** Write `forge-json.el` in
+`~/.emacs.d/lisp/ai/forge/` — the NDJSON consumer that drives
+`forge --frontend=json`. Track E Phase 1 in §9.3 above. The Rust side is GA
+and the C-level Ghostty terminal is shipped; the missing piece is the elisp
+NDJSON client that turns the stable wire protocol into the two-buffer UX.
 
