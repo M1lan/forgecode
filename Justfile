@@ -111,11 +111,11 @@ clippy-fix:
 
 # Format all Rust code (uses nightly to match CI; rustfmt.toml has nightly-only opts)
 fmt:
-    cargo +nightly fmt --all
+    rustup run nightly cargo fmt --all
 
 # Check formatting without modifying files (matches CI: autofix.yml uses +nightly)
 fmt-check:
-    cargo +nightly fmt --all -- --check
+    rustup run nightly cargo fmt --all -- --check
 
 # Full lint pass: format check + clippy
 lint: fmt-check clippy
