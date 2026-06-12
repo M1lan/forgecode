@@ -109,13 +109,15 @@ clippy:
 clippy-fix:
     cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged
 
-# Format all Rust code (uses nightly to match CI; rustfmt.toml has nightly-only opts)
+# Format all Rust code (uses nightly to match CI; rustfmt.toml has nightly-only opts).
+# PATH-prefix with the nightly toolchain bin so cargo resolves the nightly
+# cargo-fmt/rustfmt even when a Homebrew rust install shadows ~/.cargo/bin.
 fmt:
-    rustup run nightly cargo fmt --all
+    PATH="$(rustup run nightly rustc --print sysroot)/bin:$PATH" cargo fmt --all
 
 # Check formatting without modifying files (matches CI: autofix.yml uses +nightly)
 fmt-check:
-    rustup run nightly cargo fmt --all -- --check
+    PATH="$(rustup run nightly rustc --print sysroot)/bin:$PATH" cargo fmt --all -- --check
 
 # Full lint pass: format check + clippy
 lint: fmt-check clippy
