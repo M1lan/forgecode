@@ -9,7 +9,7 @@ use rustyline::completion::{Completer, Pair};
 use rustyline::config::{ColorMode, CompletionType, Config};
 use rustyline::error::ReadlineError as RustyReadlineError;
 use rustyline::highlight::Highlighter;
-use rustyline::hint::{Hinter, HistoryHinter};
+use rustyline::hint::Hinter;
 use rustyline::history::DefaultHistory;
 use rustyline::validate::Validator;
 use rustyline::{
@@ -65,14 +65,9 @@ impl ForgeEditor {
             KeyEvent(KeyCode::Enter, Modifiers::ALT),
             EventHandler::Simple(Cmd::Newline),
         );
-        editor.bind_sequence(
-            KeyEvent(KeyCode::Char('k'), Modifiers::CTRL),
-            EventHandler::Simple(Cmd::ClearScreen),
-        );
-        editor.bind_sequence(
-            KeyEvent(KeyCode::Char('K'), Modifiers::CTRL),
-            EventHandler::Simple(Cmd::ClearScreen),
-        );
+        // NB: do NOT rebind C-k. rustyline's Emacs default is kill-to-end-of-line;
+        // an earlier ClearScreen rebinding broke standard readline editing. Screen
+        // clearing stays on its default C-l.
         editor.set_helper(Some(helper));
         let _ = editor.load_history(&history_file);
         Self { editor, history_file, pending_buffer: None }
@@ -184,7 +179,6 @@ impl RustylinePrompt for ResponsivePrompt {
 struct ForgeHelper {
     completer: Mutex<InputCompleter>,
     highlighter: ForgeHighlighter,
-    hinter: HistoryHinter,
 }
 
 impl ForgeHelper {
@@ -192,7 +186,6 @@ impl ForgeHelper {
         Self {
             completer: Mutex::new(InputCompleter::new(cwd, command_manager)),
             highlighter: ForgeHighlighter,
-            hinter: HistoryHinter {},
         }
     }
 }
@@ -236,8 +229,10 @@ impl Completer for ForgeHelper {
 impl Hinter for ForgeHelper {
     type Hint = String;
 
-    fn hint(&self, line: &str, pos: usize, ctx: &RustylineContext<'_>) -> Option<Self::Hint> {
-        self.hinter.hint(line, pos, ctx)
+    // Inline ghost-text hints are disabled: the history hinter erased/cut
+    // in-progress replies in the interactive prompt (user-reported).
+    fn hint(&self, _line: &str, _pos: usize, _ctx: &RustylineContext<'_>) -> Option<Self::Hint> {
+        None
     }
 }
 
