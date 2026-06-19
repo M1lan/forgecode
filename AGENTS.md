@@ -244,3 +244,21 @@ impl<R: UserRepository, C: Cache, L: Logger> BadUserService<R, C, L> {
 // BAD: Usage becomes cumbersome
 let service = BadUserService::<PostgresRepo, RedisCache, FileLogger>::new(...);
 ```
+
+## Active known bug + deferred work (forge-zsh shell-plugin)
+
+Operator note, 2026-06-15. Relevant here because `forge-zsh` lives in
+`shell-plugin/`.
+
+- KNOWN BUG (CRITICAL): after `C-c C-c` then re-sending a prompt via
+  `:`, forge-zsh can resume the WRONG conversation in the WRONG cwd --
+  a session started in a different Ghostty window -- even though cwd
+  never changed. Suspected: `:` dispatch resolves "current
+  conversation" from global/last-active state instead of pinning to
+  this terminal. Investigation: `shell-plugin/lib/` (dispatcher,
+  bindings, context). If session/cwd feels off after abort+resend,
+  STOP and confirm identity first.
+- DEFERRED: a multi-topic improvement draft (per-tty session pinning via
+  a Ghostty-window-title short-id mirrored to a `~` entity tree; omf
+  tool; readline/steering UX) is parked, NOT for ad-hoc execution.
+- Canonical home: `~/prompts/experiments/forge-system-cohesion/`.
