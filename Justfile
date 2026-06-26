@@ -212,8 +212,11 @@ install-local:
     cargo build --release
     mkdir -p "{{ install_dir }}"
     cp -f target/release/{{ bin }} "{{ install_dir }}/{{ bin }}"
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+      codesign --force --sign - "{{ install_dir }}/{{ bin }}"
+    fi
     echo "Installed {{ bin }} to {{ install_dir }}/{{ bin }}"
-    "{{ install_dir }}/{{ bin }}" --version 2>/dev/null || true
+    "{{ install_dir }}/{{ bin }}" --version
 
 # Install the debug binary via cargo install (~/.cargo/bin/forge)
 install:
