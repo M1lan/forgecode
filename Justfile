@@ -228,6 +228,19 @@ install:
 test-zsh:
     zsh scripts/test-zsh-utils.sh
 
+# Parse-check the embedded bash plugin (full parity harness deferred)
+test-bash:
+    bash -n shell-plugin/bash/forge.plugin.bash
+
+# Parse-check the embedded fish plugin if fish is installed (harness deferred)
+test-fish:
+    #!/usr/bin/env bash
+    if command -v fish >/dev/null 2>&1; then
+        fish --no-execute shell-plugin/fish/forge.plugin.fish
+    else
+        echo "fish not installed; skipping fish parse check"
+    fi
+
 # Run all porcelain list commands
 list-porcelain:
     ./scripts/list-all-porcelain.sh

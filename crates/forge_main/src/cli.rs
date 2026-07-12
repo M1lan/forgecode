@@ -1,9 +1,11 @@
 //! NOTE: Always use singular names for commands and subcommands.
 //! For example: `forge provider login` instead of `forge providers login`.
 //!
-//! NOTE: With every change to this CLI structure, verify that the ZSH plugin
-//! remains compatible. The plugin at `shell-plugin/forge.plugin.zsh` implements
-//! shell completion and command shortcuts that depend on the CLI structure.
+//! NOTE: With every change to this CLI structure, verify that the shell plugins
+//! remain compatible. The plugins at `shell-plugin/forge.plugin.zsh`,
+//! `shell-plugin/bash/forge.plugin.bash`, and
+//! `shell-plugin/fish/forge.plugin.fish` implement shell completion and command
+//! shortcuts that depend on the CLI structure.
 
 use std::path::PathBuf;
 
@@ -177,9 +179,17 @@ pub enum TopLevelCommand {
     /// Manage agents.
     Agent(AgentCommandGroup),
 
-    /// Generate shell extension scripts.
+    /// Generate zsh shell extension scripts.
     #[command(subcommand, alias = "extension")]
-    Zsh(ZshCommandGroup),
+    Zsh(ShellCommandGroup),
+
+    /// Generate bash shell extension scripts.
+    #[command(subcommand)]
+    Bash(ShellCommandGroup),
+
+    /// Generate fish shell extension scripts.
+    #[command(subcommand)]
+    Fish(ShellCommandGroup),
 
     /// List agents, models, providers, tools, or MCP servers.
     List(ListCommandGroup),
@@ -581,7 +591,7 @@ pub enum ListCommand {
 
 /// Shell extension commands.
 #[derive(Subcommand, Debug, Clone)]
-pub enum ZshCommandGroup {
+pub enum ShellCommandGroup {
     /// Generate shell plugin script
     Plugin,
     /// Generate shell theme
@@ -1665,7 +1675,7 @@ mod tests {
         let fixture = Cli::parse_from(["forge", "zsh", "rprompt"]);
         let r_prompt = matches!(
             fixture.subcommands,
-            Some(TopLevelCommand::Zsh(ZshCommandGroup::Rprompt))
+            Some(TopLevelCommand::Zsh(ShellCommandGroup::Rprompt))
         );
         assert!(r_prompt);
     }
@@ -1963,7 +1973,7 @@ mod tests {
         let fixture = Cli::parse_from(["forge", "zsh", "theme"]);
         let actual = match fixture.subcommands {
             Some(TopLevelCommand::Zsh(terminal)) => {
-                matches!(terminal, ZshCommandGroup::Theme)
+                matches!(terminal, ShellCommandGroup::Theme)
             }
             _ => false,
         };
@@ -1975,10 +1985,40 @@ mod tests {
         let fixture = Cli::parse_from(["forge", "zsh", "plugin"]);
         let actual = match fixture.subcommands {
             Some(TopLevelCommand::Zsh(terminal)) => {
-                matches!(terminal, ZshCommandGroup::Plugin)
+                matches!(terminal, ShellCommandGroup::Plugin)
             }
             _ => false,
         };
+        assert_eq!(actual, true);
+    }
+
+    #[test]
+    fn test_terminal_plugin_bash() {
+        let fixture = Cli::parse_from(["forge", "bash", "plugin"]);
+        let actual = matches!(
+            fixture.subcommands,
+            Some(TopLevelCommand::Bash(ShellCommandGroup::Plugin))
+        );
+        assert_eq!(actual, true);
+    }
+
+    #[test]
+    fn test_terminal_plugin_fish() {
+        let fixture = Cli::parse_from(["forge", "fish", "plugin"]);
+        let actual = matches!(
+            fixture.subcommands,
+            Some(TopLevelCommand::Fish(ShellCommandGroup::Plugin))
+        );
+        assert_eq!(actual, true);
+    }
+
+    #[test]
+    fn test_bash_setup() {
+        let fixture = Cli::parse_from(["forge", "bash", "setup"]);
+        let actual = matches!(
+            fixture.subcommands,
+            Some(TopLevelCommand::Bash(ShellCommandGroup::Setup))
+        );
         assert_eq!(actual, true);
     }
 
@@ -1987,7 +2027,7 @@ mod tests {
         let fixture = Cli::parse_from(["forge", "zsh", "doctor"]);
         let actual = match fixture.subcommands {
             Some(TopLevelCommand::Zsh(terminal)) => {
-                matches!(terminal, ZshCommandGroup::Doctor)
+                matches!(terminal, ShellCommandGroup::Doctor)
             }
             _ => false,
         };
@@ -1999,7 +2039,7 @@ mod tests {
         let fixture = Cli::parse_from(["forge", "zsh", "setup"]);
         let actual = match fixture.subcommands {
             Some(TopLevelCommand::Zsh(terminal)) => {
-                matches!(terminal, ZshCommandGroup::Setup)
+                matches!(terminal, ShellCommandGroup::Setup)
             }
             _ => false,
         };
@@ -2011,7 +2051,7 @@ mod tests {
         let fixture = Cli::parse_from(["forge", "zsh", "keyboard"]);
         let actual = match fixture.subcommands {
             Some(TopLevelCommand::Zsh(terminal)) => {
-                matches!(terminal, ZshCommandGroup::Keyboard)
+                matches!(terminal, ShellCommandGroup::Keyboard)
             }
             _ => false,
         };
@@ -2022,7 +2062,7 @@ mod tests {
     fn test_zsh_format() {
         let fixture = Cli::parse_from(["forge", "zsh", "format", "--buffer", "hello world"]);
         let actual = match fixture.subcommands {
-            Some(TopLevelCommand::Zsh(ZshCommandGroup::Format { buffer })) => {
+            Some(TopLevelCommand::Zsh(ShellCommandGroup::Format { buffer })) => {
                 buffer == "hello world"
             }
             _ => false,
