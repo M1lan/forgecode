@@ -1,0 +1,117 @@
+#!/opt/homebrew/bin/bash
+# fake `forge` shim -- deterministic canned outputs + JSON trace of every call.
+# Placed first on PATH so the plugin shells out to THIS instead of the real binary.
+# Trace line (one JSON object per invocation) appended to $FORGE_TRACE:
+#   {"argv":[...],"cwd":"...","forge_env":{FORGE_*/_FORGE_* subset}}
+# stdout is the deterministic canned output ONLY (never the trace).
+set -uo pipefail
+
+FIXED_CID='00000000-0000-0000-0000-000000000001'
+FIXED_CID2='00000000-0000-0000-0000-000000000002'
+
+# --- emit trace -------------------------------------------------------------
+emit_trace() {
+  local trace="${FORGE_TRACE:-}"
+  [[ -z "$trace" ]] && return 0
+  # Collect the meaningful injected env: FORGE_SESSION__*, FORGE_REASONING__*,
+  # and the plugin ring-buffer exports (_FORGE_TERM_*). NOT the whole env.
+  local -a envpairs=()
+  local name val
+  for name in FORGE_SESSION__MODEL_ID FORGE_SESSION__PROVIDER_ID \
+              FORGE_REASONING__EFFORT FORCE_COLOR CLICOLOR_FORCE \
+              _FORGE_TERM_COMMANDS _FORGE_TERM_EXIT_CODES _FORGE_TERM_TIMESTAMPS; do
+    if [[ -n "${!name+set}" ]]; then
+      val="${!name}"
+      envpairs+=("$(json_kv "$name" "$val")")
+    fi
+  done
+  # argv as JSON array
+  local -a argj=()
+  local a
+  for a in "$@"; do argj+=("$(json_str "$a")"); done
+  local argv_json env_json
+  argv_json="$(IFS=,; printf '%s' "${argj[*]:-}")"
+  env_json="$(IFS=,; printf '%s' "${envpairs[*]:-}")"
+  printf '{"argv":[%s],"cwd":%s,"forge_env":{%s}}\n' \
+    "$argv_json" "$(json_str "$PWD")" "$env_json" >>"$trace"
+}
+
+json_str() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  # escape control chars that matter (US separator -> , tab, newline)
+  s="${s//$'\x1f'/\\u001f}"
+  s="${s//$'\t'/\\t}"
+  s="${s//$'\n'/\\n}"
+  printf '"%s"' "$s"
+}
+json_kv() { printf '%s:%s' "$(json_str "$1")" "$(json_str "$2")"; }
+
+# --- dispatch on subcommand -------------------------------------------------
+emit_trace "$@"
+
+# Skip leading global flags to find the subcommand (e.g. --agent forge <sub>).
+args=("$@")
+sub=""
+i=0
+while (( i < ${#args[@]} )); do
+  case "${args[i]}" in
+    --agent) ((i+=2)); continue ;;
+    -*) ((i+=1)); continue ;;
+    *) sub="${args[i]}"; break ;;
+  esac
+done
+# second positional (for `conversation new`, `list commands`, `config set`, ...)
+sub2=""
+if (( i+1 < ${#args[@]} )); then sub2="${args[i+1]}"; fi
+
+case "$sub" in
+  conversation)
+    case "$sub2" in
+      new)   printf '%s\n' "$FIXED_CID" ;;
+      *)     printf 'CANNED conversation %s\n' "$sub2" ;;
+    esac
+    ;;
+  banner)  printf 'FORGE BANNER\n' ;;
+  info)    printf 'CANNED info\n' ;;
+  select)
+    # $sub2 is the select kind: model | agent | provider | reasoning-effort | conversation
+    case "$sub2" in
+      model)           printf 'gpt-4o\nopenai\n' ;;   # line1=model_id line2=provider_id
+      reasoning-effort) printf 'high\n' ;;
+      agent)           printf 'sage\n' ;;
+      provider)        printf 'openai\n' ;;
+      conversation)    printf '%s\n' "$FIXED_CID2" ;;
+      *)               printf 'CANNED select %s\n' "$sub2" ;;
+    esac
+    ;;
+  config)
+    case "$sub2" in
+      list) printf 'CANNED config list\n' ;;
+      set)  printf 'CANNED config set ok\n' ;;
+      path) printf '%s\n' "$HOME/.forge/.forge.toml" ;;
+      *)    printf 'CANNED config %s\n' "$sub2" ;;
+    esac
+    ;;
+  list)
+    case "$sub2" in
+      commands|command) printf 'CMD\tTYPE\tDESC\nforge\tagent\tdefault\nsage\tagent\task\nmuse\tagent\tplan\n' ;;
+      agents)  printf 'ID\tTITLE\nforge\tForge\nsage\tSage\nmuse\tMuse\n' ;;
+      tools)   printf 'CANNED tools\n' ;;
+      skill)   printf 'CANNED skills\n' ;;
+      *)       printf 'CANNED list %s\n' "$sub2" ;;
+    esac
+    ;;
+  commit)  printf 'CANNED commit message\n' ;;
+  workspace)
+    case "$sub2" in
+      info)   exit 1 ;;   # report "not indexed" so background sync is a no-op
+      status) printf 'CANNED workspace status\n' ;;
+      *)      printf 'CANNED workspace %s\n' "$sub2" ;;
+    esac
+    ;;
+  update) exit 0 ;;        # silent self-update (fired detached)
+  *)      printf 'CANNED %s\n' "$sub" ;;
+esac
+exit 0

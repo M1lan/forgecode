@@ -1,0 +1,18 @@
+{
+  "_doc": "Trace cases for the differential conformance oracle. Each `keys` entry is a line typed into the shell followed by Enter (^M). Derived from the capability inventory (00-model.md §3, 01-dispatch.md §1).",
+  "cases": [
+    {"name": "new_bare",          "cap": "conversation.new",        "keys": [":n"]},
+    {"name": "new_prompt",        "cap": "conversation.new+send",   "keys": [":new hello world"]},
+    {"name": "default_send",      "cap": "agent.send",              "keys": [": hello there"]},
+    {"name": "info",              "cap": "info",                    "keys": [":i"]},
+    {"name": "config_list",       "cap": "config.list",             "keys": [":config"]},
+    {"name": "config_model_cm",   "cap": "config-model(cm)",        "keys": [":cm gpt"]},
+    {"name": "session_model_m",   "cap": "model(session)",          "keys": [":m gpt"]},
+    {"name": "reasoning_effort",  "cap": "reasoning-effort(re)",    "keys": [":re high"]},
+    {"name": "tools",             "cap": "tools",                   "keys": [":t"]},
+    {"name": "help",              "cap": "help(no --agent)",        "keys": [":help"]},
+    {"name": "commit",            "cap": "commit(env+no --agent)",  "keys": [":commit"]},
+    {"name": "session_then_send", "cap": "session-env-injection",   "keys": [":m gpt", ": ping"]},
+    {"name": "passthrough",       "cap": "non-colon.passthrough",   "keys": ["echo hello"]}
+  ]
+}
