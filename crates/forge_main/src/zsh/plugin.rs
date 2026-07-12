@@ -6,13 +6,124 @@ use std::process::Stdio;
 use anyhow::{Context, Result};
 use clap::CommandFactory;
 use clap_complete::generate;
-use clap_complete::shells::Zsh;
+use clap_complete::shells::{Bash, Fish, Zsh};
 use include_dir::{Dir, include_dir};
 
+use super::ShellKind;
 use crate::cli::Cli;
 
 /// Embeds shell plugin files for zsh integration
 static ZSH_PLUGIN_LIB: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../shell-plugin/lib");
+
+/// The self-contained bash plugin (single file, embedded verbatim).
+const BASH_PLUGIN: &str = include_str!("../../../../shell-plugin/bash/forge.plugin.bash");
+
+/// The self-contained fish plugin (single file, embedded verbatim).
+const FISH_PLUGIN: &str = include_str!("../../../../shell-plugin/fish/forge.plugin.fish");
+
+/// Returns the "plugin loaded" sentinel line in the target shell's syntax.
+///
+/// The setup snippets guard plugin loading on `_FORGE_PLUGIN_LOADED`, so the
+/// generated plugin must set it. Fish uses a distinct assignment syntax.
+fn loaded_sentinel(kind: ShellKind) -> &'static str {
+    match kind {
+        ShellKind::Fish => "\nset -g _FORGE_PLUGIN_LOADED (date +%s)\n",
+        ShellKind::Zsh | ShellKind::Bash => "\n_FORGE_PLUGIN_LOADED=$(date +%s)\n",
+    }
+}
+
+/// Generates the shell plugin for the requested [`ShellKind`].
+///
+/// # Errors
+///
+/// Returns an error if embedded assets contain invalid UTF-8 or completion
+/// generation fails.
+pub fn generate_plugin(kind: ShellKind) -> Result<String> {
+    match kind {
+        ShellKind::Zsh => generate_zsh_plugin(),
+        ShellKind::Bash => generate_single_file_plugin(BASH_PLUGIN, kind),
+        ShellKind::Fish => generate_single_file_plugin(FISH_PLUGIN, kind),
+    }
+}
+
+/// Builds a plugin from a single embedded file plus appended clap completions.
+///
+/// Used for bash and fish, whose plugins are self-contained single files (not
+/// an embedded `lib/` tree). The raw file is normalized, then clap completions
+/// for the target shell and the loaded sentinel are appended.
+fn generate_single_file_plugin(raw: &str, kind: ShellKind) -> Result<String> {
+    let mut output = super::normalize_script(raw);
+
+    let mut cmd = Cli::command();
+    let mut completions = Vec::new();
+    match kind {
+        ShellKind::Bash => generate(Bash, &mut cmd, "forge", &mut completions),
+        ShellKind::Fish => generate(Fish, &mut cmd, "forge", &mut completions),
+        ShellKind::Zsh => generate(Zsh, &mut cmd, "forge", &mut completions),
+    }
+
+    let completions_str = String::from_utf8(completions)?;
+    output.push_str("\n# --- Clap Completions ---\n");
+    output.push_str(&completions_str);
+    output.push_str(loaded_sentinel(kind));
+
+    Ok(output)
+}
+
+/// Generates the shell theme for the requested [`ShellKind`].
+///
+/// # Errors
+///
+/// Returns an error for bash and fish, whose themes are not yet ported.
+pub fn generate_theme(kind: ShellKind) -> Result<String> {
+    match kind {
+        ShellKind::Zsh => generate_zsh_theme(),
+        other => anyhow::bail!(
+            "theme not yet ported for {} (tracked separately)",
+            other.name()
+        ),
+    }
+}
+
+/// Runs shell diagnostics for the requested [`ShellKind`].
+///
+/// # Errors
+///
+/// Returns an error if the zsh doctor script cannot be executed. Bash and fish
+/// print an honest "not yet ported" notice and return `Ok`.
+pub fn run_doctor(kind: ShellKind) -> Result<()> {
+    match kind {
+        ShellKind::Zsh => run_zsh_doctor(),
+        other => {
+            println!(
+                "forge {} doctor: diagnostics not yet ported for {} (tracked separately)",
+                other.name(),
+                other.name()
+            );
+            Ok(())
+        }
+    }
+}
+
+/// Shows keyboard shortcuts for the requested [`ShellKind`].
+///
+/// # Errors
+///
+/// Returns an error if the zsh keyboard script cannot be executed. Bash and
+/// fish print an honest "not yet ported" notice and return `Ok`.
+pub fn run_keyboard(kind: ShellKind) -> Result<()> {
+    match kind {
+        ShellKind::Zsh => run_zsh_keyboard(),
+        other => {
+            println!(
+                "forge {} keyboard: keyboard help not yet ported for {} (tracked separately)",
+                other.name(),
+                other.name()
+            );
+            Ok(())
+        }
+    }
+}
 
 /// Generates the complete zsh plugin by combining embedded files and clap
 /// completions
@@ -246,20 +357,99 @@ pub struct ZshSetupResult {
 /// - The .zshrc file cannot be read or written
 /// - Invalid forge markers are found (incomplete or incorrectly ordered)
 /// - A backup of the existing .zshrc cannot be created
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn setup_zsh_integration(
+    disable_nerd_font: bool,
+    forge_editor: Option<&str>,
+) -> Result<ZshSetupResult> {
+    setup_integration(ShellKind::Zsh, disable_nerd_font, forge_editor)
+}
+
+/// Returns the embedded setup snippet body for the given shell.
+fn setup_snippet(kind: ShellKind) -> &'static str {
+    match kind {
+        ShellKind::Zsh => include_str!("../../../../shell-plugin/forge.setup.zsh"),
+        ShellKind::Bash => include_str!("../../../../shell-plugin/bash/forge.setup.bash"),
+        ShellKind::Fish => include_str!("../../../../shell-plugin/fish/forge.setup.fish"),
+    }
+}
+
+/// Resolves the rc file a shell's integration block is written into.
+///
+/// For fish, the `~/.config/fish/` parent directory is created if missing since
+/// it may not exist on a fresh install.
+///
+/// # Errors
+///
+/// Returns an error if `HOME` is unset or the fish config parent cannot be
+/// created.
+fn resolve_rc_path(kind: ShellKind) -> Result<PathBuf> {
+    let home = std::env::var("HOME").context("HOME environment variable not set")?;
+    match kind {
+        ShellKind::Zsh => {
+            let zdotdir = std::env::var("ZDOTDIR").unwrap_or_else(|_| home.clone());
+            Ok(PathBuf::from(&zdotdir).join(".zshrc"))
+        }
+        ShellKind::Bash => Ok(PathBuf::from(&home).join(".bashrc")),
+        ShellKind::Fish => {
+            let config_home = std::env::var("XDG_CONFIG_HOME")
+                .unwrap_or_else(|_| format!("{}/.config", home));
+            let fish_dir = PathBuf::from(&config_home).join("fish");
+            fs::create_dir_all(&fish_dir).context(format!(
+                "Failed to create fish config directory {}",
+                fish_dir.display()
+            ))?;
+            Ok(fish_dir.join("config.fish"))
+        }
+    }
+}
+
+/// Formats the `NERD_FONT=0` disable line in the target shell's syntax.
+///
+/// Zsh/bash keep the historical unquoted form; fish uses `set -gx`.
+fn nerd_font_line(kind: ShellKind) -> String {
+    match kind {
+        ShellKind::Fish => "set -gx NERD_FONT 0".to_string(),
+        ShellKind::Zsh | ShellKind::Bash => "export NERD_FONT=0".to_string(),
+    }
+}
+
+/// Formats the `FORGE_EDITOR` export line in the target shell's syntax.
+fn editor_line(kind: ShellKind, editor: &str) -> String {
+    match kind {
+        ShellKind::Fish => format!("set -gx FORGE_EDITOR \"{}\"", editor),
+        ShellKind::Zsh | ShellKind::Bash => format!("export FORGE_EDITOR=\"{}\"", editor),
+    }
+}
+
+/// Sets up shell integration for the given [`ShellKind`] by inserting or
+/// updating a marker-delimited block in the shell's rc file.
+///
+/// # Arguments
+///
+/// * `kind` - The target shell flavor.
+/// * `disable_nerd_font` - If true, adds a `NERD_FONT=0` export to the rc file.
+/// * `forge_editor` - If `Some(editor)`, adds a `FORGE_EDITOR` export.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The `HOME` environment variable is not set
+/// - The rc file cannot be read or written
+/// - Invalid forge markers are found (incomplete or incorrectly ordered)
+/// - A backup of the existing rc file cannot be created
+pub fn setup_integration(
+    kind: ShellKind,
     disable_nerd_font: bool,
     forge_editor: Option<&str>,
 ) -> Result<ZshSetupResult> {
     const START_MARKER: &str = "# >>> forge initialize >>>";
     const END_MARKER: &str = "# <<< forge initialize <<<";
-    const FORGE_INIT_CONFIG_RAW: &str = include_str!("../../../../shell-plugin/forge.setup.zsh");
-    let forge_init_config = super::normalize_script(FORGE_INIT_CONFIG_RAW);
+    let forge_init_config = super::normalize_script(setup_snippet(kind));
 
-    let home = std::env::var("HOME").context("HOME environment variable not set")?;
-    let zdotdir = std::env::var("ZDOTDIR").unwrap_or_else(|_| home.clone());
-    let zshrc_path = PathBuf::from(&zdotdir).join(".zshrc");
+    let zshrc_path = resolve_rc_path(kind)?;
 
-    // Read existing .zshrc or create new one
+    // Read existing rc file or create new one
     let content = if zshrc_path.exists() {
         fs::read_to_string(&zshrc_path)
             .context(format!("Failed to read {}", zshrc_path.display()))?
@@ -283,7 +473,7 @@ pub fn setup_zsh_integration(
             "# Disable Nerd Fonts (set during setup - icons not displaying correctly)".to_string(),
         );
         forge_config.push("# To re-enable: remove this line and install a Nerd Font from https://www.nerdfonts.com/".to_string());
-        forge_config.push("export NERD_FONT=0".to_string());
+        forge_config.push(nerd_font_line(kind));
     }
 
     // Add editor configuration if requested
@@ -291,7 +481,7 @@ pub fn setup_zsh_integration(
         forge_config.push(String::new()); // Add blank line before comment
         forge_config.push("# Editor for editing prompts (set during setup)".to_string());
         forge_config.push("# To change: update FORGE_EDITOR or remove to use $EDITOR".to_string());
-        forge_config.push(format!("export FORGE_EDITOR=\"{}\"", editor));
+        forge_config.push(editor_line(kind, editor));
     }
 
     forge_config.push(END_MARKER.to_string());
@@ -798,5 +988,91 @@ mod tests {
                 std::env::remove_var("ZDOTDIR");
             }
         }
+    }
+
+    #[test]
+    fn test_generate_plugin_bash_contains_dispatch_token() {
+        use pretty_assertions::assert_eq;
+
+        let fixture = generate_plugin(crate::zsh::ShellKind::Bash).unwrap();
+        // Non-empty, contains the bash accept-line widget and loaded sentinel.
+        let actual = !fixture.is_empty()
+            && fixture.contains("forge-accept-line")
+            && fixture.contains("_forge_action_default")
+            && fixture.contains("_FORGE_PLUGIN_LOADED=$(date +%s)");
+        let expected = true;
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_generate_plugin_fish_contains_dispatch_token() {
+        use pretty_assertions::assert_eq;
+
+        let fixture = generate_plugin(crate::zsh::ShellKind::Fish).unwrap();
+        // Non-empty, contains the fish accept-line widget and fish-syntax sentinel.
+        let actual = !fixture.is_empty()
+            && fixture.contains("_forge_accept_line")
+            && fixture.contains("_forge_action_default")
+            && fixture.contains("set -g _FORGE_PLUGIN_LOADED");
+        let expected = true;
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_generate_theme_bash_is_deferred_error() {
+        use pretty_assertions::assert_eq;
+
+        let actual = generate_theme(crate::zsh::ShellKind::Bash).is_err();
+        let expected = true;
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_setup_integration_bash_writes_markers() {
+        use tempfile::TempDir;
+
+        // Lock to prevent parallel test execution that modifies env vars
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        let temp_dir = TempDir::new().unwrap();
+        let bashrc_path = temp_dir.path().join(".bashrc");
+
+        let original_home = std::env::var("HOME").ok();
+        let original_zdotdir = std::env::var("ZDOTDIR").ok();
+
+        // SAFETY: We hold ENV_LOCK to prevent concurrent environment modifications
+        unsafe {
+            std::env::set_var("HOME", temp_dir.path());
+            std::env::remove_var("ZDOTDIR");
+        }
+
+        let actual = setup_integration(crate::zsh::ShellKind::Bash, false, None);
+
+        // Restore environment first
+        // SAFETY: We hold ENV_LOCK to prevent concurrent environment modifications
+        unsafe {
+            if let Some(home) = original_home {
+                std::env::set_var("HOME", home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(zdotdir) = original_zdotdir {
+                std::env::set_var("ZDOTDIR", zdotdir);
+            } else {
+                std::env::remove_var("ZDOTDIR");
+            }
+        }
+
+        assert!(actual.is_ok(), "Bash setup should succeed: {:?}", actual);
+        assert!(
+            bashrc_path.exists(),
+            "bashrc file should be created at {:?}",
+            bashrc_path
+        );
+        let content = fs::read_to_string(&bashrc_path).expect("Should be able to read bashrc");
+        assert!(content.contains("# >>> forge initialize >>>"));
+        assert!(content.contains("# <<< forge initialize <<<"));
+        // The bash setup snippet loads the plugin via `forge bash plugin`.
+        assert!(content.contains("forge bash plugin"));
     }
 }
