@@ -59,6 +59,10 @@ build-release:
 build-crate crate:
     cargo build -p {{ crate }}
 
+# Debug build of just the forge binary crate (fast; feeds install-debug)
+build-debug:
+    cargo build -p forge_main
+
 # ── Run ───────────────────────────────────────────────────────────────────────
 
 # Run forge in debug mode with arguments
@@ -204,8 +208,8 @@ cross target:
 schema:
     cargo run -p forge_main -- schema > forge.schema.json
 
-# Install forge to ~/.local/bin (release build)
-install-local:
+# Install release forge to ~/.local/bin/forge (release IS the deliverable here)
+install-release:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Building release binary..."
@@ -217,6 +221,24 @@ install-local:
     fi
     echo "Installed {{ bin }} to {{ install_dir }}/{{ bin }}"
     "{{ install_dir }}/{{ bin }}" --version
+
+# Install debug forge to ~/.local/bin/forge-debug (FORGE_LOG=debug for verbose logs)
+install-debug: build-debug
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p "{{ install_dir }}"
+    cp -f target/debug/{{ bin }} "{{ install_dir }}/{{ bin }}-debug"
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+      codesign --force --sign - "{{ install_dir }}/{{ bin }}-debug"
+    fi
+    echo "Installed {{ bin }}-debug to {{ install_dir }}/{{ bin }}-debug"
+    "{{ install_dir }}/{{ bin }}-debug" --version
+
+# Co-install release 'forge' + debug 'forge-debug', startable individually
+install-both: install-release install-debug
+
+# Backwards-compatible alias for muscle memory (release install)
+install-local: install-release
 
 # Install the debug binary via cargo install (~/.cargo/bin/forge)
 install:
@@ -400,7 +422,9 @@ menu THEME='dark':
         '── RELEASE ──' \
         '  cross-pick         pick a cross-compilation target' \
         '  schema             regenerate forge JSON schema' \
-        '  install-local      install release build to ~/.local/bin' \
+        '  install-release    install release build to ~/.local/bin/forge' \
+        '  install-debug      install debug build to ~/.local/bin/forge-debug' \
+        '  install-both       co-install forge + forge-debug' \
         '  install            cargo install --path crates/forge_main' \
         '── SHELL PLUGIN ──' \
         '  test-zsh           zsh format + perf tests' \
