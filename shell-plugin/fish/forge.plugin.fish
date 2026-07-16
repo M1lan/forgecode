@@ -85,6 +85,7 @@ function _forge_session_envs
     test -n "$_FORGE_SESSION_MODEL"; and set -a e "FORGE_SESSION__MODEL_ID=$_FORGE_SESSION_MODEL"
     test -n "$_FORGE_SESSION_PROVIDER"; and set -a e "FORGE_SESSION__PROVIDER_ID=$_FORGE_SESSION_PROVIDER"
     test -n "$_FORGE_SESSION_REASONING_EFFORT"; and set -a e "FORGE_REASONING__EFFORT=$_FORGE_SESSION_REASONING_EFFORT"
+    test -e "$HOME/.claude/.caveman-active"; and set -a e "FORGE_EXTRA_INSTRUCTIONS_PATH=$HOME/forge/skills/caveman/SKILL.md"
     for x in $e
         echo $x
     end

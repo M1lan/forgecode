@@ -1,7 +1,22 @@
 # Plan: Enforce caveman compression across forge-zsh (and sibling shell plugins)
 
 Date: 2026-07-16
-Status: draft (preliminary)
+Status: SUPERSEDED by `plans/2026-07-16-extra-instructions-env-hook-v1.md`
+
+> Superseded 2026-07-16. Implementation moved to the successor plan (general
+> `FORGE_EXTRA_INSTRUCTIONS_PATH` hook), which is the correct mechanism for the SAME goal.
+>
+> CORRECTION (do not trust the earlier review's "redundant" conclusion): a first review
+> claimed §0a in `~/forge/AGENTS.md` already injects caveman on every launch, making this
+> redundant. That was WRONG. `base_path` is overridden by the `FORGE_CONFIG` env var
+> (`crates/forge_config/src/reader.rs:68-69`), and the operator's multi-account setup sets a
+> per-slot `FORGE_CONFIG` (`~/.config/mein-zsh/snippets/forge-claude-accounts.zsh:103`).
+> Under any such slot `global_agentsmd_path()` = `$FORGE_CONFIG/AGENTS.md`, NOT
+> `~/forge/AGENTS.md`, so §0a is never loaded and caveman is inactive for forge-zsh `:`
+> prompts (confirmed by direct operator observation). The env-var hook uses an ABSOLUTE
+> path and is `base_path`-independent, so it fixes caveman in every slot — this feature is
+> justified, not redundant. The only claim that survives from the review: this is text
+> INJECTION, not mechanical enforcement of compression (RULE 0 wording).
 Tracker: `br` epic `forgecode-8v8` (see `.beads/`)
 
 ## Objective
