@@ -392,8 +392,8 @@ fn resolve_rc_path(kind: ShellKind) -> Result<PathBuf> {
         }
         ShellKind::Bash => Ok(PathBuf::from(&home).join(".bashrc")),
         ShellKind::Fish => {
-            let config_home = std::env::var("XDG_CONFIG_HOME")
-                .unwrap_or_else(|_| format!("{}/.config", home));
+            let config_home =
+                std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{}/.config", home));
             let fish_dir = PathBuf::from(&config_home).join("fish");
             fs::create_dir_all(&fish_dir).context(format!(
                 "Failed to create fish config directory {}",

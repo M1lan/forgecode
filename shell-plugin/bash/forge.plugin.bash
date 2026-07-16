@@ -75,6 +75,7 @@ _forge_exec() {
   [[ -n "$_FORGE_SESSION_MODEL" ]] && local -x FORGE_SESSION__MODEL_ID="$_FORGE_SESSION_MODEL"
   [[ -n "$_FORGE_SESSION_PROVIDER" ]] && local -x FORGE_SESSION__PROVIDER_ID="$_FORGE_SESSION_PROVIDER"
   [[ -n "$_FORGE_SESSION_REASONING_EFFORT" ]] && local -x FORGE_REASONING__EFFORT="$_FORGE_SESSION_REASONING_EFFORT"
+  [[ -e "$HOME/.claude/.caveman-active" ]] && local -x FORGE_EXTRA_INSTRUCTIONS_PATH="$HOME/forge/skills/caveman/SKILL.md"
   _forge_export_term_ctx "$_FORGE_BIN" --agent "$agent_id" "$@"
 }
 _forge_exec_interactive() {
@@ -82,6 +83,7 @@ _forge_exec_interactive() {
   [[ -n "$_FORGE_SESSION_MODEL" ]] && local -x FORGE_SESSION__MODEL_ID="$_FORGE_SESSION_MODEL"
   [[ -n "$_FORGE_SESSION_PROVIDER" ]] && local -x FORGE_SESSION__PROVIDER_ID="$_FORGE_SESSION_PROVIDER"
   [[ -n "$_FORGE_SESSION_REASONING_EFFORT" ]] && local -x FORGE_REASONING__EFFORT="$_FORGE_SESSION_REASONING_EFFORT"
+  [[ -e "$HOME/.claude/.caveman-active" ]] && local -x FORGE_EXTRA_INSTRUCTIONS_PATH="$HOME/forge/skills/caveman/SKILL.md"
   local -a cmd=("$_FORGE_BIN" --agent "$agent_id" "$@")
   if [[ "$_FORGE_TERM" == "true" && ${#_FORGE_TERM_COMMANDS[@]} -gt 0 ]]; then
     local IFS=$'\x1f'

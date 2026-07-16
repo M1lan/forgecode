@@ -51,7 +51,5 @@ pub(crate) fn normalize_script(content: &str) -> String {
     content.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-pub use plugin::{
-    generate_plugin, generate_theme, run_doctor, run_keyboard, setup_integration,
-};
+pub use plugin::{generate_plugin, generate_theme, run_doctor, run_keyboard, setup_integration};
 pub use rprompt::ZshRPrompt;

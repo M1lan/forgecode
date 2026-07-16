@@ -40,6 +40,7 @@ function _forge_exec() {
     [[ -n "$_FORGE_SESSION_MODEL" ]] && local -x FORGE_SESSION__MODEL_ID="$_FORGE_SESSION_MODEL"
     [[ -n "$_FORGE_SESSION_PROVIDER" ]] && local -x FORGE_SESSION__PROVIDER_ID="$_FORGE_SESSION_PROVIDER"
     [[ -n "$_FORGE_SESSION_REASONING_EFFORT" ]] && local -x FORGE_REASONING__EFFORT="$_FORGE_SESSION_REASONING_EFFORT"
+    [[ -e "$HOME/.claude/.caveman-active" ]] && local -x FORGE_EXTRA_INSTRUCTIONS_PATH="$HOME/forge/skills/caveman/SKILL.md"
     "${cmd[@]}"
 }
 
@@ -74,6 +75,7 @@ function _forge_exec_interactive() {
     [[ -n "$_FORGE_SESSION_MODEL" ]] && local -x FORGE_SESSION__MODEL_ID="$_FORGE_SESSION_MODEL"
     [[ -n "$_FORGE_SESSION_PROVIDER" ]] && local -x FORGE_SESSION__PROVIDER_ID="$_FORGE_SESSION_PROVIDER"
     [[ -n "$_FORGE_SESSION_REASONING_EFFORT" ]] && local -x FORGE_REASONING__EFFORT="$_FORGE_SESSION_REASONING_EFFORT"
+    [[ -e "$HOME/.claude/.caveman-active" ]] && local -x FORGE_EXTRA_INSTRUCTIONS_PATH="$HOME/forge/skills/caveman/SKILL.md"
     "${cmd[@]}" </dev/tty >/dev/tty
 }
 
