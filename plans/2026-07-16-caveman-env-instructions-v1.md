@@ -2,7 +2,7 @@
 
 Date: 2026-07-16
 Status: draft (preliminary)
-Tracker: `br` epic `forgecode-caveman-enforce` (see `.beads/`)
+Tracker: `br` epic `forgecode-8v8` (see `.beads/`)
 
 ## Objective
 
