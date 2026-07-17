@@ -126,6 +126,13 @@ impl CodeBlockParser {
             }
         }
 
+        // Flush an unterminated code block so its content is never dropped
+        // (streaming frames routinely end mid-code-block).
+        if in_code {
+            result.push_str(&format!("\x00{}\x00\n", blocks.len()));
+            blocks.push(CodeBlock { code: code_lines.join("\n"), lang: lang.clone() });
+        }
+
         Self { markdown: result, blocks }
     }
 
@@ -262,6 +269,18 @@ mod tests {
         let expected = 3;
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_unterminated_code_block_is_flushed() {
+        // Regression: streaming frames often end mid-code-block; the final
+        // unterminated block must not be dropped (output-cutoff bug).
+        let fixture = "```rust\nlet x = 1;";
+        let parser = CodeBlockParser::new(fixture);
+
+        assert_eq!(parser.blocks().len(), 1);
+        assert_eq!(parser.blocks()[0].code, "let x = 1;");
+        assert_eq!(parser.blocks()[0].lang, "rust");
     }
 
     #[test]
