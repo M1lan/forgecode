@@ -14,8 +14,8 @@ EVIDENCE.md carry the same structure in plain form. Read all three first.
 3. Commit small and often: at minimum after every phase, prefer after
    every task. Message style: `analysis: <what>` 4-8 words.
    NO commit trailers of any kind (no Co-Authored-By, no Assisted-By) —
-   operator global rule, outranks the repo AGENTS.md trailer line;
-   conflict already surfaced to operator 2026-07-24.
+   operator global rule; repo AGENTS.md trailer line fixed 2026-07-24,
+   no conflict remains.
 4. This harness dir is LIVE: update PLAN/LEDGER/EVIDENCE continuously
    during implementation, not at the end.
 5. Model routing (frontier-once): text-only subtasks go to ollama first.

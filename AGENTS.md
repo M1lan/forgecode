@@ -124,7 +124,7 @@ Always verify changes by running tests and linting the codebase
 
 - Safely assume git is pre-installed
 - Safely assume github cli (gh) is pre-installed
-- Always use `Co-Authored-By: ForgeCode <noreply@forgecode.dev>` for git commits and Github comments
+- Never add commit trailers of any kind (no `Co-Authored-By`, no `Assisted-By`) to git commits, PRs, or GitHub comments — operator global rule (2026-07-24) supersedes the former ForgeCode trailer requirement
 
 ## Service Implementation Guidelines
 
