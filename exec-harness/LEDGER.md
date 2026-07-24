@@ -14,7 +14,8 @@ Rule: flip marker before starting and after finishing. Append notes inline.
 - [ ] verify + extend seeded crate dep graph (EVIDENCE §2) via .codegraph
 - [ ] churn top-20 (`git log --format= --name-only | sort | uniq -c | sort -rn | head -20`)
 - [ ] baseline: tokei snapshot, clippy warning count, typos count
-- [ ] br epic + P1-P7 tickets created
+- [x] br epic + P1-P7 + EXTRA tickets created: epic
+  `forgecode-deep-analysis-exec-harness-bt4` (.1-.12; duplicate epic -l0m closed)
 
 ## P2 hypotheses
 
