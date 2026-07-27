@@ -40,6 +40,8 @@ info:
     @if command -v nextest  >/dev/null 2>&1; then echo "nextest:   $(cargo nextest --version 2>/dev/null | head -1)"; else echo "nextest:   not installed"; fi
     @if command -v shellcheck >/dev/null 2>&1; then echo "shellcheck: $(shellcheck --version | rg '^version')"; else echo "shellcheck: not installed"; fi
     @if command -v rumdl    >/dev/null 2>&1; then echo "rumdl:     $(rumdl --version 2>/dev/null || echo 'installed')"; else echo "rumdl:     not installed"; fi
+    @echo "─────────────────────────────"
+    @echo "ai code-intel: run 'just ai-doctor' (gitnexus/codegraph/grepai/repowise)"
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
@@ -131,7 +133,7 @@ fix: fmt clippy-fix
 
 # Lint shell scripts with shellcheck (excludes zsh)
 shellcheck:
-    @if command -v shellcheck >/dev/null 2>&1; then shellcheck --exclude=SC1071 scripts/*.sh; else echo "shellcheck not installed -- skipping"; fi
+    @if command -v shellcheck >/dev/null 2>&1; then shellcheck --exclude=SC1071 -x scripts/*.sh scripts/*.bash; else echo "shellcheck not installed -- skipping"; fi
 
 # Lint markdown files with rumdl
 rumdl:
@@ -316,6 +318,60 @@ outdated:
 bloat:
     @if command -v cargo-bloat >/dev/null 2>&1; then cargo bloat --release -n 20; else echo "cargo-bloat not installed -- skipping"; fi
 
+# ── AI Code-Intelligence ──────────────────────────────────────────────────────
+#
+# Repo-local semantic/graph indexes, all driven by scripts/ai-tools.bash:
+#   gitnexus  — execution-flow knowledge graph (callers/callees/impact/trace)
+#   codegraph — symbol graph + `explore`/`node` one-shot context
+#   grepai    — natural-language semantic search (local ollama embedder)
+#   repowise  — codebase wiki + defect-risk / dead-code (index-only, no LLM)
+# Everything indexes locally: no paid LLM calls, no network. Indexes are
+# gitignored. Run `just ai-init` once, then `just ai-sync` after big changes.
+
+# Tool availability + versions + which indexes are built
+ai-doctor:
+    @./scripts/ai-tools.bash doctor
+
+# Index status for every AI tool
+ai-status:
+    @./scripts/ai-tools.bash status
+
+# Build any missing index (idempotent; skips healthy ones)
+ai-init:
+    @./scripts/ai-tools.bash init
+
+# Incremental update of every AI index
+ai-sync:
+    @./scripts/ai-tools.bash sync
+
+# Force a full re-index across every AI tool
+ai-resync:
+    @./scripts/ai-tools.bash resync
+
+# Remove every AI index (FORCE=1 skips the prompt)
+ai-clean:
+    @./scripts/ai-tools.bash clean
+
+# Natural-language semantic code search (grepai, TOON output)
+ai-search *query:
+    @./scripts/ai-tools.bash search {{ query }}
+
+# gitnexus passthrough: `just gitnexus impact SomeSymbol` / `query "flow"` / `context Foo`
+gitnexus *args:
+    @./scripts/ai-tools.bash gitnexus {{ args }}
+
+# codegraph passthrough: `just codegraph explore "auth flow"` / `node fn_name`
+codegraph *args:
+    @./scripts/ai-tools.bash codegraph {{ args }}
+
+# grepai passthrough: `just grepai search "where is retry logic"`
+grepai *args:
+    @./scripts/ai-tools.bash grepai {{ args }}
+
+# repowise passthrough: `just repowise risk HEAD` / `search "topic"`
+repowise *args:
+    @./scripts/ai-tools.bash repowise {{ args }}
+
 # ── Interactive (gum) ─────────────────────────────────────────────────────────
 #
 # Tooling: gum (filter/style/confirm/input) + bat (themed preview) + rg.
@@ -449,6 +505,13 @@ menu THEME='dark':
         '  deps               cargo tree --depth 1' \
         '  outdated           outdated deps (root only)' \
         '  bloat              binary size breakdown' \
+        '── AI CODE-INTEL ──' \
+        '  ai-doctor          tool availability + index state' \
+        '  ai-status          index status for every AI tool' \
+        '  ai-init            build any missing index (idempotent)' \
+        '  ai-sync            incremental update of every index' \
+        '  ai-resync          force full re-index across tools' \
+        '  ai-clean           remove every AI index' \
         '── ⚙ THEME ──' \
         "  theme-${ALT_THEME}        switch the menu to ${ALT_THEME} theme" \
         '  quit               exit the menu' \

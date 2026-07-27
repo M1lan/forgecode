@@ -46,9 +46,12 @@ jobs/**
 node_modules/
 bench/__pycache__
 .ai/
-.grepai/
 
+# AI code-intelligence indexes (built locally via scripts/ai-tools.bash)
+.grepai/
 .repowise
+.codegraph/
+.gitnexus/
 .mdless_tmp/
 
 # Harness/editor spy dirs (not part of forgecode)
