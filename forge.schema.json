@@ -71,6 +71,11 @@
         "null"
       ]
     },
+    "enable_remote_file_validation": {
+      "description": "Sends file paths and full file content to the Forge services API for\nsyntax validation. Disabled unless explicitly enabled.",
+      "type": "boolean",
+      "default": false
+    },
     "http": {
       "description": "HTTP client settings including proxy, TLS, and timeout configuration.",
       "anyOf": [

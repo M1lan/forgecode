@@ -52,12 +52,12 @@ impl<
         let path = Path::new(&path);
         assert_absolute_path(path)?;
 
-        // Validate file syntax using remote validation API (graceful failure)
+        // Validate file syntax using the configured validation repository.
         let errors = self
             .infra
             .validate_file(path, &content)
             .await
-            .unwrap_or_default();
+            .with_context(|| format!("Failed to validate file {}", path.display()))?;
 
         if let Some(parent) = Path::new(&path).parent() {
             self.infra
@@ -124,9 +124,137 @@ impl<
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use futures::stream;
     use pretty_assertions::assert_eq;
 
     use super::*;
+
+    #[derive(Default)]
+    struct ValidationFailureInfra {
+        write_calls: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl FileDirectoryInfra for ValidationFailureInfra {
+        async fn create_dirs(&self, _path: &Path) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl FileInfoInfra for ValidationFailureInfra {
+        async fn is_binary(&self, _path: &Path) -> anyhow::Result<bool> {
+            unreachable!()
+        }
+
+        async fn is_file(&self, _path: &Path) -> anyhow::Result<bool> {
+            Ok(false)
+        }
+
+        async fn exists(&self, _path: &Path) -> anyhow::Result<bool> {
+            unreachable!()
+        }
+
+        async fn file_size(&self, _path: &Path) -> anyhow::Result<u64> {
+            unreachable!()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl FileReaderInfra for ValidationFailureInfra {
+        async fn read_utf8(&self, _path: &Path) -> anyhow::Result<String> {
+            unreachable!()
+        }
+
+        fn read_batch_utf8(
+            &self,
+            _batch_size: usize,
+            _paths: Vec<PathBuf>,
+        ) -> impl futures::Stream<Item = (PathBuf, anyhow::Result<String>)> + Send {
+            stream::empty()
+        }
+
+        async fn read(&self, _path: &Path) -> anyhow::Result<Vec<u8>> {
+            unreachable!()
+        }
+
+        async fn range_read_utf8(
+            &self,
+            _path: &Path,
+            _start_line: u64,
+            _end_line: u64,
+        ) -> anyhow::Result<(String, forge_domain::FileInfo)> {
+            unreachable!()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl FileWriterInfra for ValidationFailureInfra {
+        async fn write(&self, _path: &Path, _contents: Bytes) -> anyhow::Result<()> {
+            self.write_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn append(&self, _path: &Path, _contents: Bytes) -> anyhow::Result<()> {
+            unreachable!()
+        }
+
+        async fn write_temp(
+            &self,
+            _prefix: &str,
+            _ext: &str,
+            _content: &str,
+        ) -> anyhow::Result<PathBuf> {
+            unreachable!()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl SnapshotRepository for ValidationFailureInfra {
+        async fn insert_snapshot(
+            &self,
+            _file_path: &Path,
+        ) -> anyhow::Result<forge_domain::Snapshot> {
+            unreachable!()
+        }
+
+        async fn undo_snapshot(&self, _file_path: &Path) -> anyhow::Result<()> {
+            unreachable!()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ValidationRepository for ValidationFailureInfra {
+        async fn validate_file(
+            &self,
+            _path: impl AsRef<Path> + Send,
+            _content: &str,
+        ) -> anyhow::Result<Vec<forge_domain::SyntaxError>> {
+            Err(anyhow::anyhow!("remote validation failed"))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_write_surfaces_remote_validation_error_without_writing() {
+        let fixture = Arc::new(ValidationFailureInfra::default());
+        let service = ForgeFsWrite::new(fixture.clone());
+
+        let actual = service
+            .write(
+                "/workspace/test.rs".to_string(),
+                "fn main() {}".to_string(),
+                false,
+            )
+            .await
+            .unwrap_err();
+
+        let expected = "Failed to validate file /workspace/test.rs: remote validation failed";
+        assert_eq!(format!("{actual:#}"), expected);
+        assert_eq!(fixture.write_calls.load(Ordering::SeqCst), 0);
+    }
 
     #[test]
     fn test_normalize_crlf_to_lf() {
