@@ -190,6 +190,10 @@ pub struct ForgeConfig {
     #[serde(default)]
     #[dummy(expr = "\"https://api.forgecode.dev/api\".to_string()")]
     pub services_url: String,
+    /// Sends file paths and full file content to the Forge services API for
+    /// syntax validation. Disabled unless explicitly enabled.
+    #[serde(default)]
+    pub enable_remote_file_validation: bool,
     /// Maximum number of file extensions included in the agent system prompt.
     #[serde(default)]
     pub max_extensions: usize,

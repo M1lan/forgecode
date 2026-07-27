@@ -602,7 +602,9 @@ impl<F: GrpcInfra + Send + Sync> forge_domain::WorkspaceIndexRepository for Forg
 }
 
 #[async_trait::async_trait]
-impl<F: GrpcInfra + Send + Sync> forge_domain::ValidationRepository for ForgeRepo<F> {
+impl<F: GrpcInfra + EnvironmentInfra<Config = forge_config::ForgeConfig> + Send + Sync>
+    forge_domain::ValidationRepository for ForgeRepo<F>
+{
     async fn validate_file(
         &self,
         path: impl AsRef<std::path::Path> + Send,
