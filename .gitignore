@@ -50,3 +50,10 @@ bench/__pycache__
 
 .repowise
 .mdless_tmp/
+
+# Harness/editor spy dirs (not part of forgecode)
+.clinerules/
+.cursor/
+.opencode/
+.windsurf/
+.github/copilot-instructions.md
