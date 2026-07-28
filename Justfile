@@ -1,825 +1,423 @@
-# ── ForgeCode Justfile -- Build, test, lint, ship ──
+# ── ForgeCode Justfile -- Build, test, inspect, ship ──
+#
+# `just menu` is the only interactive interface. It discovers every public
+# recipe from this file, displays its source, collects parameters, and runs a
+# reviewed command. All other recipes remain direct, scriptable commands.
 
+set shell := ["bash", "-euo", "pipefail", "-c"]
 set dotenv-load := false
 set positional-arguments := true
-set shell := ["bash", "-euo", "pipefail", "-c"]
 
 export RUST_BACKTRACE := "1"
 
-# Workspace crates directory
 crates_dir := "crates"
-
-# Binary name
 bin := "forge"
-
-# Install destination
 install_dir := env("HOME") / ".local/bin"
-
-# Cross-compilation targets (matches CI matrix)
-cross_targets := "x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc aarch64-linux-android"
+helpers := justfile_directory() / ".just" / "helpers"
 
 # ── Meta ──────────────────────────────────────────────────────────────────────
 
-# Show all available recipes
-default:
+# Show available public recipes.
+[private]
+default: help
+
+# Print public recipe list for scripts and narrow terminals.
+[group('meta')]
+help:
     @just --list --unsorted
 
-# Print project name and tool versions
+# Print compact project and tool status.
+[group('meta')]
 info:
-    @echo "ForgeCode"
-    @echo "─────────────────────────────"
-    @echo "rust:      $(rustc --version)"
-    @echo "cargo:     $(cargo --version)"
-    @echo "just:      $(just --version)"
-    @echo "os:        $(uname -srm)"
-    @echo "─────────────────────────────"
-    @if command -v gum      >/dev/null 2>&1; then echo "gum:       $(gum --version)";       else echo "gum:       not installed (brew install gum)"; fi
-    @if command -v bat      >/dev/null 2>&1; then echo "bat:       $(bat --version | head -1)"; else echo "bat:       not installed (brew install bat)"; fi
-    @if command -v rg       >/dev/null 2>&1; then echo "rg:        $(rg --version | head -1)";  else echo "rg:        not installed (brew install ripgrep)"; fi
-    @if command -v fd       >/dev/null 2>&1; then echo "fd:        $(fd --version)";        else echo "fd:        not installed (brew install fd)"; fi
-    @if command -v nextest  >/dev/null 2>&1; then echo "nextest:   $(cargo nextest --version 2>/dev/null | head -1)"; else echo "nextest:   not installed"; fi
-    @if command -v shellcheck >/dev/null 2>&1; then echo "shellcheck: $(shellcheck --version | rg '^version')"; else echo "shellcheck: not installed"; fi
-    @if command -v rumdl    >/dev/null 2>&1; then echo "rumdl:     $(rumdl --version 2>/dev/null || echo 'installed')"; else echo "rumdl:     not installed"; fi
-    @echo "─────────────────────────────"
-    @echo "ai code-intel: run 'just ai-doctor' (gitnexus/codegraph/grepai/repowise)"
+    @'{{helpers}}/info-screen.bash'
+
+# Launch the only interactive recipe browser and runner.
+[group('meta')]
+[no-exit-message]
+menu:
+    @'{{helpers}}/menu.bash'
+
+# Check local developer tools and AI index availability.
+[group('meta')]
+doctor:
+    @'{{helpers}}/doctor.bash'
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
-# Type-check the workspace (fastest feedback loop)
+# Type-check workspace targets.
+[group('build')]
 check:
     cargo check --workspace --all-targets
 
-# Debug build of the full workspace
+# Build workspace in debug mode.
+[group('build')]
 build:
     cargo build --workspace
 
-# Release build (slow -- LTO + strip; avoid unless shipping)
+# Build release binary.
+[group('build')]
 build-release:
     cargo build --release
 
-# Build a specific crate by name
+# Build one crate.
+[group('build')]
 build-crate crate:
     cargo build -p {{ crate }}
 
-# Debug build of just the forge binary crate (fast; feeds install-debug)
+# Build forge binary in debug mode.
+[group('build')]
 build-debug:
     cargo build -p forge_main
 
-# ── Run ───────────────────────────────────────────────────────────────────────
+# ── Run & Watch ───────────────────────────────────────────────────────────────
 
-# Run forge in debug mode with arguments
+# Run forge with arguments.
+[group('run')]
 run *args:
     cargo run -p forge_main -- {{ args }}
 
-# Watch for changes and re-check (requires cargo-watch)
+# Watch and type-check changes.
+[group('watch')]
 watch:
-    @if command -v cargo-watch >/dev/null 2>&1; then cargo watch -x 'check --workspace'; else echo "cargo-watch not installed -- skipping"; fi
+    @if command -v cargo-watch >/dev/null 2>&1; then cargo watch -x 'check --workspace'; else printf 'cargo-watch not installed\n' >&2; fi
 
-# Watch and run tests on change
+# Watch and run tests on changes.
+[group('watch')]
 watch-test:
-    @if command -v cargo-watch >/dev/null 2>&1; then cargo watch -x 'insta test --accept'; else echo "cargo-watch not installed -- skipping"; fi
+    @if command -v cargo-watch >/dev/null 2>&1; then cargo watch -x 'insta test --accept'; else printf 'cargo-watch not installed\n' >&2; fi
 
-# Watch a specific crate's tests
+# Watch one crate's tests.
+[group('watch')]
 watch-crate crate:
-    @if command -v cargo-watch >/dev/null 2>&1; then cargo watch -x "insta test --accept -p {{ crate }}"; else echo "cargo-watch not installed -- skipping"; fi
+    @if command -v cargo-watch >/dev/null 2>&1; then cargo watch -x "insta test --accept -p {{ crate }}"; else printf 'cargo-watch not installed\n' >&2; fi
 
 # ── Test ──────────────────────────────────────────────────────────────────────
 
-# Run all workspace tests with insta auto-accept
+# Run workspace tests with insta auto-accept.
+[group('test')]
 test *args:
     @if command -v cargo-insta >/dev/null 2>&1; then cargo insta test --accept {{ args }}; else cargo test --workspace {{ args }}; fi
 
-# Run tests for a specific crate
+# Run tests for one crate.
+[group('test')]
 test-crate crate *args:
     @if command -v cargo-insta >/dev/null 2>&1; then cargo insta test --accept -p {{ crate }} {{ args }}; else cargo test -p {{ crate }} {{ args }}; fi
 
-# Run a single test by name pattern
+# Run tests matching pattern.
+[group('test')]
 test-one pattern:
     @if command -v cargo-insta >/dev/null 2>&1; then cargo insta test --accept -- {{ pattern }}; else cargo test --workspace -- {{ pattern }}; fi
 
-# Run tests with nextest (parallel, better output)
+# Run workspace tests with nextest.
+[group('test')]
 test-nextest *args:
-    @if command -v cargo-nextest >/dev/null 2>&1; then cargo nextest run --workspace {{ args }}; else echo "cargo-nextest not installed -- skipping"; fi
+    @if command -v cargo-nextest >/dev/null 2>&1; then cargo nextest run --workspace {{ args }}; else printf 'cargo-nextest not installed\n' >&2; fi
 
-# Run TypeScript evals suite
+# Run TypeScript eval suite.
+[group('test')]
 eval *args:
     npm run eval -- {{ args }}
 
-# ── Lint & Format ────────────────────────────────────────────────────────────
+# Run zsh format and performance tests.
+[group('test')]
+test-zsh:
+    zsh scripts/test-zsh-utils.sh
 
-# Run clippy with warnings-as-errors (matches CI)
+# Parse-check embedded Bash plugin.
+[group('test')]
+test-bash:
+    bash -n shell-plugin/bash/forge.plugin.bash
+
+# Parse-check Fish plugin when installed.
+[group('test')]
+test-fish:
+    @if command -v fish >/dev/null 2>&1; then fish --no-execute shell-plugin/fish/forge.plugin.fish; else printf 'fish not installed; skipping\n' >&2; fi
+
+# ── Lint & Format ─────────────────────────────────────────────────────────────
+
+# Run clippy with warnings denied.
+[group('lint')]
 clippy:
     RUSTFLAGS="-Dwarnings" cargo clippy --workspace --all-targets
 
-# Clippy with auto-fix applied
+# Apply clippy fixes.
+[group('lint')]
 clippy-fix:
     cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged
 
-# Format all Rust code (uses nightly to match CI; rustfmt.toml has nightly-only opts).
-# PATH-prefix with the nightly toolchain bin so cargo resolves the nightly
-# cargo-fmt/rustfmt even when a Homebrew rust install shadows ~/.cargo/bin.
+# Format Rust source with nightly rustfmt.
+[group('lint')]
 fmt:
     PATH="$(rustup run nightly rustc --print sysroot)/bin:$PATH" cargo fmt --all
 
-# Check formatting without modifying files (matches CI: autofix.yml uses +nightly)
+# Check Rust formatting with nightly rustfmt.
+[group('lint')]
 fmt-check:
     PATH="$(rustup run nightly rustc --print sysroot)/bin:$PATH" cargo fmt --all -- --check
 
-# Full lint pass: format check + clippy
+# Run Rust format and clippy checks.
+[group('lint')]
 lint: fmt-check clippy
 
-# Auto-fix everything: format + clippy fix
+# Apply Rust formatting and clippy fixes.
+[group('lint')]
 fix: fmt clippy-fix
 
-# Lint shell scripts with shellcheck (excludes zsh)
+# Lint Bash scripts and Justfile helpers.
+[group('lint')]
 shellcheck:
-    @if command -v shellcheck >/dev/null 2>&1; then shellcheck --exclude=SC1071 -x scripts/*.sh scripts/*.bash; else echo "shellcheck not installed -- skipping"; fi
+    @if command -v shellcheck >/dev/null 2>&1; then shellcheck --exclude=SC1071 --source-path=SCRIPTDIR -x scripts/*.sh scripts/*.bash '{{helpers}}'/*.bash; else printf 'shellcheck not installed\n' >&2; fi
 
-# Lint markdown files with rumdl
+# Lint Markdown files.
+[group('lint')]
 rumdl:
-    @if command -v rumdl >/dev/null 2>&1; then rumdl .; else echo "rumdl not installed -- skipping"; fi
+    @if command -v rumdl >/dev/null 2>&1; then rumdl .; else printf 'rumdl not installed\n' >&2; fi
 
-# ── Check & Verify ───────────────────────────────────────────────────────────
+# ── Verify ────────────────────────────────────────────────────────────────────
 
-# Full pre-push verification gate (format + lint + test)
+# Run full pre-push verification.
+[group('verify')]
 verify: fmt-check clippy test
 
-# Quick pre-push check: format + check + clippy (no full test run)
-pre-push: fmt check clippy
+# Run fast pre-push checks.
+[group('verify')]
+pre-push: fmt-check check clippy
 
-# Run the full CI pipeline locally: check + lint + test
+# Run local CI checks.
+[group('verify')]
 ci: check lint test
 
-# Check for known security vulnerabilities
+# Check known Rust security vulnerabilities.
+[group('verify')]
 audit:
-    @if command -v cargo-audit >/dev/null 2>&1; then cargo audit; else echo "cargo-audit not installed -- skipping"; fi
+    @if command -v cargo-audit >/dev/null 2>&1; then cargo audit; else printf 'cargo-audit not installed\n' >&2; fi
 
-# Check for unused dependencies
+# Check unused dependencies.
+[group('verify')]
 machete:
-    @if command -v cargo-machete >/dev/null 2>&1; then cargo machete; else echo "cargo-machete not installed -- skipping"; fi
+    @if command -v cargo-machete >/dev/null 2>&1; then cargo machete; else printf 'cargo-machete not installed\n' >&2; fi
 
-# Supply chain license/ban/advisory check
+# Check supply-chain licenses, bans, and advisories.
+[group('verify')]
 deny:
-    @if command -v cargo-deny >/dev/null 2>&1; then cargo deny check; else echo "cargo-deny not installed -- skipping"; fi
+    @if command -v cargo-deny >/dev/null 2>&1; then cargo deny check; else printf 'cargo-deny not installed\n' >&2; fi
 
-# ── Coverage ──────────────────────────────────────────────────────────────────
+# ── Coverage & Benchmark ──────────────────────────────────────────────────────
 
-# Generate LCOV coverage report (matches CI)
+# Generate LCOV coverage report.
+[group('coverage')]
 coverage:
-    @if command -v cargo-llvm-cov >/dev/null 2>&1; then cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info; else echo "cargo-llvm-cov not installed -- skipping"; fi
+    @if command -v cargo-llvm-cov >/dev/null 2>&1; then cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info; else printf 'cargo-llvm-cov not installed\n' >&2; fi
 
-# Generate and open HTML coverage report
+# Generate and open HTML coverage report.
+[group('coverage')]
 coverage-html:
-    @if command -v cargo-llvm-cov >/dev/null 2>&1; then cargo llvm-cov --all-features --workspace --html --open; else echo "cargo-llvm-cov not installed -- skipping"; fi
+    @if command -v cargo-llvm-cov >/dev/null 2>&1; then cargo llvm-cov --all-features --workspace --html --open; else printf 'cargo-llvm-cov not installed\n' >&2; fi
 
-# ── Benchmark ─────────────────────────────────────────────────────────────────
-
-# Run the zsh rprompt performance benchmark (CI threshold: 60ms)
+# Run zsh rprompt benchmark.
+[group('bench')]
 bench-rprompt:
     ./scripts/benchmark.sh --threshold 60 zsh rprompt
 
-# Run a custom performance benchmark
-bench +args:
+# Run custom benchmark arguments.
+[group('bench')]
+bench *args:
     ./scripts/benchmark.sh {{ args }}
 
-# ── Database (Diesel / SQLite) ────────────────────────────────────────────────
+# ── Database ──────────────────────────────────────────────────────────────────
 
-# Run pending diesel migrations
+# Apply pending Diesel migrations.
+[group('database')]
 db-migrate:
     diesel migration run
 
-# Revert the last diesel migration
+# Revert latest Diesel migration.
+[group('database')]
 db-revert:
     diesel migration revert
 
-# Regenerate diesel schema.rs from current DB
+# Regenerate Diesel schema.
+[group('database')]
 db-schema:
     diesel print-schema > crates/forge_repo/src/database/schema.rs
 
-# Create a new diesel migration
+# Create a new Diesel migration.
+[group('database')]
 db-new name:
     diesel migration generate {{ name }}
 
-# ── Release & Publish ─────────────────────────────────────────────────────────
+# ── Release ───────────────────────────────────────────────────────────────────
 
-# Cross-compile for a specific target (e.g. `just cross x86_64-unknown-linux-musl`)
+# Cross-compile release target.
+[group('release')]
 cross target:
     cross build --release --target {{ target }}
 
-# Regenerate the JSON schema from forge binary
+# Regenerate Forge JSON schema.
+[group('release')]
 schema:
     cargo run -p forge_main -- schema > forge.schema.json
 
-# Install release forge to ~/.local/bin/forge (release IS the deliverable here)
+# Build and install release forge binary.
+[group('release')]
 install-release:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "Building release binary..."
     cargo build --release
     mkdir -p "{{ install_dir }}"
     cp -f target/release/{{ bin }} "{{ install_dir }}/{{ bin }}"
-    if [[ "$(uname -s)" == "Darwin" ]]; then
-      codesign --force --sign - "{{ install_dir }}/{{ bin }}"
-    fi
-    echo "Installed {{ bin }} to {{ install_dir }}/{{ bin }}"
+    if [[ "$(uname -s)" == "Darwin" ]]; then codesign --force --sign - "{{ install_dir }}/{{ bin }}"; fi
     "{{ install_dir }}/{{ bin }}" --version
 
-# Install debug forge to ~/.local/bin/forge-debug (FORGE_LOG=debug for verbose logs)
+# Build and install debug forge binary.
+[group('release')]
 install-debug: build-debug
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p "{{ install_dir }}"
     cp -f target/debug/{{ bin }} "{{ install_dir }}/{{ bin }}-debug"
-    if [[ "$(uname -s)" == "Darwin" ]]; then
-      codesign --force --sign - "{{ install_dir }}/{{ bin }}-debug"
-    fi
-    echo "Installed {{ bin }}-debug to {{ install_dir }}/{{ bin }}-debug"
+    if [[ "$(uname -s)" == "Darwin" ]]; then codesign --force --sign - "{{ install_dir }}/{{ bin }}-debug"; fi
     "{{ install_dir }}/{{ bin }}-debug" --version
 
-# Co-install release 'forge' + debug 'forge-debug', startable individually
+# Install release and debug forge binaries.
+[group('release')]
 install-both: install-release install-debug
 
-# Backwards-compatible alias for muscle memory (release install)
+# Install release forge binary compatibility alias.
+[group('release')]
 install-local: install-release
 
-# Install the debug binary via cargo install (~/.cargo/bin/forge)
+# Install debug forge through cargo.
+[group('release')]
 install:
     cargo install --path crates/forge_main
 
-# ── Shell Plugin ──────────────────────────────────────────────────────────────
+# ── Utilities ─────────────────────────────────────────────────────────────────
 
-# Run zsh format correctness + perf tests
-test-zsh:
-    zsh scripts/test-zsh-utils.sh
-
-# Parse-check the embedded bash plugin (full parity harness deferred)
-test-bash:
-    bash -n shell-plugin/bash/forge.plugin.bash
-
-# Parse-check the embedded fish plugin if fish is installed (harness deferred)
-test-fish:
-    #!/usr/bin/env bash
-    if command -v fish >/dev/null 2>&1; then
-        fish --no-execute shell-plugin/fish/forge.plugin.fish
-    else
-        echo "fish not installed; skipping fish parse check"
-    fi
-
-# Run all porcelain list commands
-list-porcelain:
-    ./scripts/list-all-porcelain.sh
-
-# ── Clean ─────────────────────────────────────────────────────────────────────
-
-# Remove build artifacts
+# Remove build artifacts.
+[group('clean')]
 clean:
     cargo clean
 
-# Remove and rebuild from scratch
+# Remove artifacts and rebuild workspace.
+[group('clean')]
 rebuild: clean build
 
-# ── Git ───────────────────────────────────────────────────────────────────────
-
-# Amend the last commit without editing the message
+# Amend latest commit without changing message.
+[group('git')]
 amend:
     git add -A && git commit --amend --no-edit
 
-# Interactive rebase on main
+# Start interactive rebase onto main.
+[group('git')]
 rebase:
     git rebase -i main
 
-# Show log as oneline graph
+# Show recent commit graph.
+[group('git')]
 log:
     git log --oneline --graph --decorate -20
 
-# ── Utilities ─────────────────────────────────────────────────────────────────
+# Run all porcelain list commands.
+[group('util')]
+list-porcelain:
+    ./scripts/list-all-porcelain.sh
 
-# Count lines of Rust code in the workspace
+# Search Rust source with ripgrep.
+[group('util')]
+search query:
+    rg --line-number --type rust -- {{ query }} {{ crates_dir }}/
+
+# Count Rust lines in workspace.
+[group('util')]
 loc:
-    @if command -v tokei >/dev/null 2>&1; then tokei {{ crates_dir }}/ -t Rust; else rg --files -t rust {{ crates_dir }}/ | xargs wc -l | tail -1; fi
+    @if command -v tokei >/dev/null 2>&1; then tokei {{ crates_dir }}/ -t Rust; else rg --files -t rust {{ crates_dir }}/ | xargs wc -l; fi
 
-# List all workspace crates
+# List workspace crates.
+[group('util')]
 crates:
     @ls {{ crates_dir }}
 
-# Show workspace dependency tree (depth 1)
+# Show workspace dependency tree.
+[group('util')]
 deps:
     cargo tree --workspace --depth 1
 
-# Show dependency tree for a specific crate
+# Show one crate dependency tree.
+[group('util')]
 deps-crate crate depth='2':
     cargo tree -p {{ crate }} --depth {{ depth }}
 
-# Outdated dependencies
+# Check outdated dependencies.
+[group('util')]
 outdated:
-    @if command -v cargo-outdated >/dev/null 2>&1; then cargo outdated --workspace --root-deps-only; else echo "cargo-outdated not installed -- skipping"; fi
+    @if command -v cargo-outdated >/dev/null 2>&1; then cargo outdated --workspace --root-deps-only; else printf 'cargo-outdated not installed\n' >&2; fi
 
-# Show binary size breakdown (requires cargo-bloat)
+# Show release binary size breakdown.
+[group('util')]
 bloat:
-    @if command -v cargo-bloat >/dev/null 2>&1; then cargo bloat --release -n 20; else echo "cargo-bloat not installed -- skipping"; fi
+    @if command -v cargo-bloat >/dev/null 2>&1; then cargo bloat --release -n 20; else printf 'cargo-bloat not installed\n' >&2; fi
 
-# ── AI Code-Intelligence ──────────────────────────────────────────────────────
-#
-# Repo-local semantic/graph indexes, all driven by scripts/ai-tools.bash:
-#   gitnexus  — execution-flow knowledge graph (callers/callees/impact/trace)
-#   codegraph — symbol graph + `explore`/`node` one-shot context
-#   grepai    — natural-language semantic search (local ollama embedder)
-#   repowise  — codebase wiki + defect-risk / dead-code (index-only, no LLM)
-# Everything indexes locally: no paid LLM calls, no network. Indexes are
-# gitignored. Run `just ai-init` once, then `just ai-sync` after big changes.
+# ── AI Code Intelligence ──────────────────────────────────────────────────────
 
-# Tool availability + versions + which indexes are built
+# Check local AI-tool and index status.
+[group('ai')]
 ai-doctor:
     @./scripts/ai-tools.bash doctor
 
-# Index status for every AI tool
+# Show all local AI index status.
+[group('ai')]
 ai-status:
     @./scripts/ai-tools.bash status
 
-# Build any missing index (idempotent; skips healthy ones)
+# Build missing local AI indexes.
+[group('ai')]
 ai-init:
     @./scripts/ai-tools.bash init
 
-# Incremental update of every AI index
+# Incrementally update local AI indexes.
+[group('ai')]
 ai-sync:
     @./scripts/ai-tools.bash sync
 
-# Force a full re-index across every AI tool
+# Force full local AI re-index.
+[group('ai')]
 ai-resync:
     @./scripts/ai-tools.bash resync
 
-# Remove every AI index (FORCE=1 skips the prompt)
+# Remove local AI indexes after confirmation.
+[group('ai')]
 ai-clean:
     @./scripts/ai-tools.bash clean
 
-# Natural-language semantic code search (grepai, TOON output)
+# Search code semantically through grepai.
+[group('ai')]
 ai-search *query:
     @./scripts/ai-tools.bash search {{ query }}
 
-# gitnexus passthrough: `just gitnexus impact SomeSymbol` / `query "flow"` / `context Foo`
+# Pass arguments to gitnexus with local repository selection.
+[group('ai')]
 gitnexus *args:
     @./scripts/ai-tools.bash gitnexus {{ args }}
 
-# codegraph passthrough: `just codegraph explore "auth flow"` / `node fn_name`
+# Pass arguments to codegraph.
+[group('ai')]
 codegraph *args:
     @./scripts/ai-tools.bash codegraph {{ args }}
 
-# grepai passthrough: `just grepai search "where is retry logic"`
+# Pass arguments to grepai.
+[group('ai')]
 grepai *args:
     @./scripts/ai-tools.bash grepai {{ args }}
 
-# repowise passthrough: `just repowise risk HEAD` / `search "topic"`
+# Pass arguments to repowise.
+[group('ai')]
 repowise *args:
     @./scripts/ai-tools.bash repowise {{ args }}
 
-# ── Interactive (gum) ─────────────────────────────────────────────────────────
-#
-# Tooling: gum (filter/style/confirm/input) + bat (themed preview) + rg.
-# Search semantics: `gum filter --no-fuzzy --no-fuzzy-sort` → match from start
-# of word (\b<query>), case-insensitive. Typing `te` matches `test`,
-# `test-doc`, `test-matrix`; NOT `pretest`. Exactly the whole-word feel
-# the project standard prescribes — no scattered single-char highlights.
-#
-# Themes: dark (default) / light. Switch from inside the menu, or:
-#     just menu light
+# ── Compatibility ─────────────────────────────────────────────────────────────
 
-# Brand-themed interactive recipe menu (gum + bat).
+# Compatibility alias for muscle memory; the sole interface is `just menu`.
+[private]
 [no-exit-message]
-menu THEME='dark':
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    if ! command -v gum >/dev/null 2>&1 || ! command -v bat >/dev/null 2>&1; then
-        echo "menu requires gum + bat: brew install gum bat" >&2; exit 1
-    fi
-
-    theme="{{ THEME }}"
-    case "$theme" in dark|light) ;; *) theme="dark" ;; esac
-
-    # ── Brand palette (from ~/templates/design-minimals.txt) ──
-    NAVY="#00003C"; INK="#00001B"; TEAL="#003C32"
-    BLUE="#0071FF"; GREEN="#1BEB83"
-    OFFWHITE="#F4F7F9"; BORDER_LIGHT="#CBD5E1"; BORDER_DARK="#94A3B8"
-    MUTED="#64748B"; MUTED_LIGHT="#94A3B8"; WHITE="#FFFFFF"
-
-    # ── Theme-conditional colours (BG_PANEL gives the menu its own card) ──
-    if [[ "$theme" == "light" ]]; then
-        FG="$NAVY";          BG_PANEL="$OFFWHITE"
-        BG_MATCH="#E5F0FF";  BG_CURSOR="$BORDER_LIGHT"
-        ACCENT="$BLUE";      ACCENT2="$TEAL";      MATCH_FG="$TEAL"
-        BORDER="$BORDER_DARK"
-        BANNER_FG="$BLUE";   SUBTLE="$MUTED"
-        BAT_THEME="GitHub";  ALT_THEME="dark"
-    else
-        FG="$OFFWHITE";      BG_PANEL="$INK"
-        BG_MATCH="$TEAL";    BG_CURSOR="$NAVY"
-        ACCENT="$GREEN";     ACCENT2="$BLUE";      MATCH_FG="$GREEN"
-        BORDER="$BORDER_DARK"
-        BANNER_FG="$GREEN";  SUBTLE="$MUTED_LIGHT"
-        BAT_THEME="Coldark-Dark"; ALT_THEME="light"
-    fi
-
-    export GUM_FILTER_INDICATOR_FOREGROUND="$ACCENT"
-    export GUM_FILTER_INDICATOR_BACKGROUND="$BG_CURSOR"
-    export GUM_FILTER_MATCH_FOREGROUND="$MATCH_FG"
-    export GUM_FILTER_MATCH_BACKGROUND="$BG_MATCH"
-    export GUM_FILTER_HEADER_FOREGROUND="$SUBTLE"
-    export GUM_FILTER_PROMPT_FOREGROUND="$ACCENT"
-    export GUM_FILTER_TEXT_FOREGROUND="$FG"
-    export GUM_FILTER_CURSOR_TEXT_FOREGROUND="$ACCENT"
-    export GUM_FILTER_CURSOR_TEXT_BACKGROUND="$BG_CURSOR"
-    export GUM_FILTER_PLACEHOLDER_FOREGROUND="$SUBTLE"
-    export GUM_CONFIRM_PROMPT_FOREGROUND="$FG"
-    export GUM_CONFIRM_SELECTED_BACKGROUND="$ACCENT2"
-    export GUM_CONFIRM_SELECTED_FOREGROUND="$WHITE"
-    export GUM_CONFIRM_UNSELECTED_FOREGROUND="$SUBTLE"
-
-    # ── Recipe data (curated, categorized) ──
-    items=$(printf '%s\n' \
-        '── BUILD ──' \
-        '  check              cargo check --workspace --all-targets' \
-        '  build              debug build of the workspace' \
-        '  build-release      release build (LTO + strip)' \
-        '  build-pick         pick a crate to build' \
-        '── RUN & WATCH ──' \
-        '  watch              watch + cargo check' \
-        '  watch-test         watch + insta test' \
-        '── TEST ──' \
-        '  test               workspace tests (insta auto-accept)' \
-        '  test-nextest       cargo nextest if installed' \
-        '  test-pick          pick a crate to test' \
-        '  test-fn            pick a single test function' \
-        '  eval               npm run eval' \
-        '── LINT & FORMAT ──' \
-        '  clippy             clippy --workspace -D warnings' \
-        '  clippy-fix         clippy --fix' \
-        '  fmt                cargo fmt --all' \
-        '  fmt-check          cargo fmt --check' \
-        '  lint               fmt-check + clippy' \
-        '  fix                fmt + clippy-fix' \
-        '  shellcheck         shellcheck scripts/*.sh' \
-        '  rumdl              markdown lint' \
-        '── VERIFY & CI ──' \
-        '  verify             full pre-push gate (fmt + clippy + test)' \
-        '  pre-push           quick pre-push check' \
-        '  ci                 full CI pipeline locally' \
-        '  audit              cargo-audit (CVEs)' \
-        '  machete            cargo-machete (unused deps)' \
-        '  deny               cargo-deny (licenses/bans/advisories)' \
-        '── COVERAGE ──' \
-        '  coverage           LCOV report (cargo-llvm-cov)' \
-        '  coverage-html      HTML report, open in browser' \
-        '── BENCHMARK ──' \
-        '  bench-rprompt      zsh rprompt benchmark (CI threshold 60ms)' \
-        '── DATABASE ──' \
-        '  db-migrate         run pending diesel migrations' \
-        '  db-revert          revert last migration' \
-        '  db-schema          regenerate schema.rs' \
-        '── RELEASE ──' \
-        '  cross-pick         pick a cross-compilation target' \
-        '  schema             regenerate forge JSON schema' \
-        '  install-release    install release build to ~/.local/bin/forge' \
-        '  install-debug      install debug build to ~/.local/bin/forge-debug' \
-        '  install-both       co-install forge + forge-debug' \
-        '  install            cargo install --path crates/forge_main' \
-        '── SHELL PLUGIN ──' \
-        '  test-zsh           zsh format + perf tests' \
-        '  list-porcelain     run all porcelain list commands' \
-        '── CLEAN ──' \
-        '  clean              cargo clean' \
-        '  rebuild            clean + build' \
-        '── GIT ──' \
-        '  amend              amend last commit (no edit)' \
-        '  rebase             interactive rebase on main' \
-        '  log                git oneline graph (last 20)' \
-        '  branch             pick a branch to checkout' \
-        '  show               pick a commit to inspect' \
-        '── FILES ──' \
-        '  edit               pick a source file to edit' \
-        '  search             live-grep across Rust files' \
-        '  crate-open         pick a crate to edit lib.rs/main.rs' \
-        '── INFO & UTIL ──' \
-        '  info               project + tool versions' \
-        '  loc                lines of Rust code' \
-        '  crates             list workspace crates' \
-        '  deps               cargo tree --depth 1' \
-        '  outdated           outdated deps (root only)' \
-        '  bloat              binary size breakdown' \
-        '── AI CODE-INTEL ──' \
-        '  ai-doctor          tool availability + index state' \
-        '  ai-status          index status for every AI tool' \
-        '  ai-init            build any missing index (idempotent)' \
-        '  ai-sync            incremental update of every index' \
-        '  ai-resync          force full re-index across tools' \
-        '  ai-clean           remove every AI index' \
-        '── ⚙ THEME ──' \
-        "  theme-${ALT_THEME}        switch the menu to ${ALT_THEME} theme" \
-        '  quit               exit the menu' \
-    )
-
-    while true; do
-        clear
-
-        gum style --border=double --border-foreground="$BORDER" \
-                  --background="$BG_PANEL" \
-                  --foreground="$BANNER_FG" --bold --align=center \
-                  --padding="1 4" --margin="1 0" --width=78 \
-                  "ForgeCode · Justfile menu" \
-                  "$(gum style --foreground="$SUBTLE" --background="$BG_PANEL" --italic \
-                      "theme: ${theme}  ·  type to filter (whole-word from start)  ·  ↑↓ navigate  ·  Enter pick")"
-
-        choice=$(printf '%s\n' "$items" | \
-            gum filter --no-fuzzy --no-fuzzy-sort \
-                --header="" \
-                --placeholder="type to filter recipes..." \
-                --prompt="search › " \
-                --indicator="› " \
-                --height=24 \
-                --width=78 \
-                --reverse \
-            || echo "__cancel__")
-
-        [[ "$choice" == "__cancel__" || -z "$choice" ]] && exit 0
-        if [[ "$choice" =~ ^── ]]; then continue; fi
-
-        recipe=$(echo "$choice" | awk '{print $1}')
-        [[ -z "$recipe" ]] && continue
-
-        case "$recipe" in
-            quit|q|exit) exit 0 ;;
-            theme-light) exec just menu light ;;
-            theme-dark)  exec just menu dark  ;;
-        esac
-
-        clear
-        gum style --border=rounded --border-foreground="$BORDER" \
-                  --background="$BG_PANEL" \
-                  --foreground="$ACCENT" --bold --padding="0 2" --margin="1 0" \
-                  "preview · just $recipe"
-
-        body=$(just --show "$recipe" 2>/dev/null || echo "(no body for $recipe)")
-        cols=$(tput cols 2>/dev/null || echo 100)
-        inner_width=$(( cols > 16 ? cols - 8 : cols ))
-
-        # bat does NOT have a `just` syntax -- `make` is the closest match.
-        printf '%s\n' "$body" | \
-            bat --language=make --color=always --paging=never \
-                --style=numbers --theme="$BAT_THEME" \
-            | gum style --border=rounded --border-foreground="$BORDER" \
-                        --padding="1 2" --margin="0 4" \
-                        --width="$inner_width" --no-strip-ansi
-        echo
-
-        if gum confirm "Run \`just $recipe\`?" \
-                --affirmative="Run" --negative="Back" --default; then
-            clear
-            gum style --foreground="$ACCENT" --bold --margin="1 0" \
-                "→ just $recipe"
-            exec just "$recipe"
-        fi
-        # Otherwise loop back to the filter.
-    done
-
-# Force-launch the menu in light theme (e.g. for keybindings).
-menu-light: (menu "light")
-
-# Backwards-compatible alias (`just fzf` -> menu) for muscle memory.
 fzf: menu
-
-# Pick any recipe to run -- auto-discovered via `just --list`.
-[no-exit-message]
-pick:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v gum >/dev/null 2>&1 || { echo "needs gum: brew install gum" >&2; exit 1; }
-    BLUE="#0071FF"; GREEN="#1BEB83"; MUTED="#64748B"
-    export GUM_FILTER_INDICATOR_FOREGROUND="$BLUE"
-    export GUM_FILTER_MATCH_FOREGROUND="$GREEN"
-    export GUM_FILTER_PROMPT_FOREGROUND="$BLUE"
-    export GUM_FILTER_PLACEHOLDER_FOREGROUND="$MUTED"
-    line=$(just --list --unsorted | tail -n +2 | sed 's/^[[:space:]]*//' \
-        | gum filter --no-fuzzy --no-fuzzy-sort --reverse --height=22 \
-              --placeholder="type a recipe name or description..." \
-              --prompt="just › " \
-        || echo "__cancel__")
-    [[ "$line" == "__cancel__" || -z "$line" ]] && exit 0
-    recipe=$(echo "$line" | awk '{print $1}')
-    [[ -z "$recipe" ]] && exit 0
-    just "$recipe"
-
-# Live-grep across Rust files. Pick a match → open in $EDITOR at line.
-# `just search foo` runs immediately; `just search` prompts for the pattern.
-[no-exit-message]
-search QUERY='':
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v gum >/dev/null 2>&1 || { echo "needs gum: brew install gum" >&2; exit 1; }
-    command -v bat >/dev/null 2>&1 || { echo "needs bat: brew install bat" >&2; exit 1; }
-    BLUE="#0071FF"; GREEN="#1BEB83"; MUTED="#64748B"
-    export GUM_INPUT_PROMPT_FOREGROUND="$BLUE"
-    export GUM_INPUT_CURSOR_FOREGROUND="$BLUE"
-    export GUM_INPUT_PLACEHOLDER_FOREGROUND="$MUTED"
-    export GUM_FILTER_INDICATOR_FOREGROUND="$BLUE"
-    export GUM_FILTER_MATCH_FOREGROUND="$GREEN"
-    export GUM_FILTER_PROMPT_FOREGROUND="$BLUE"
-    export GUM_FILTER_PLACEHOLDER_FOREGROUND="$MUTED"
-
-    q="{{ QUERY }}"
-    if [[ -z "$q" ]]; then
-        q=$(gum input --placeholder="grep pattern (regex)" \
-                      --prompt="rg › " --width=60 || true)
-    fi
-    [[ -z "$q" ]] && exit 0
-
-    matches=$(rg --line-number --no-heading --color=never \
-                 --type rust -- "$q" {{ crates_dir }}/ 2>/dev/null || true)
-    if [[ -z "$matches" ]]; then
-        gum style --foreground="$MUTED" --italic --margin="1 0" \
-            "no matches for: $q"
-        exit 0
-    fi
-
-    # Narrow further with gum filter -- list visible immediately.
-    pick=$(printf '%s\n' "$matches" \
-        | gum filter --no-fuzzy --no-fuzzy-sort --reverse --height=24 \
-              --placeholder="narrow further or pick a match..." \
-              --prompt="match › " \
-        || echo "__cancel__")
-    [[ "$pick" == "__cancel__" || -z "$pick" ]] && exit 0
-
-    file=$(echo "$pick" | cut -d: -f1)
-    line=$(echo "$pick" | cut -d: -f2)
-    [[ -z "$file" || -z "$line" ]] && exit 0
-
-    # Show context, then jump in $EDITOR at line.
-    bat --color=always --style=numbers --highlight-line "$line" \
-        --line-range=$((line > 20 ? line - 20 : 1)):$((line + 40)) "$file" || true
-    "${EDITOR:-vim}" "+$line" "$file"
-
-# Backwards-compatible alias for muscle memory.
-search-fzf: search
-
-# Pick a Rust source file to open in $EDITOR.
-[no-exit-message]
-edit:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v gum >/dev/null 2>&1 || { echo "needs gum: brew install gum" >&2; exit 1; }
-    BLUE="#0071FF"; GREEN="#1BEB83"; MUTED="#64748B"
-    export GUM_FILTER_INDICATOR_FOREGROUND="$BLUE"
-    export GUM_FILTER_MATCH_FOREGROUND="$GREEN"
-    export GUM_FILTER_PROMPT_FOREGROUND="$BLUE"
-    export GUM_FILTER_PLACEHOLDER_FOREGROUND="$MUTED"
-    file=$(rg --files -t rust {{ crates_dir }}/ \
-        | gum filter --no-fuzzy --no-fuzzy-sort --reverse --height=22 \
-              --placeholder="type to filter source files..." --prompt="edit › " \
-        || echo "__cancel__")
-    [[ "$file" == "__cancel__" || -z "$file" ]] && exit 0
-    "${EDITOR:-vim}" "$file"
-
-# Pick a workspace crate to build.
-[no-exit-message]
-build-pick:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v gum >/dev/null 2>&1 || { echo "needs gum: brew install gum" >&2; exit 1; }
-    BLUE="#0071FF"; GREEN="#1BEB83"; MUTED="#64748B"
-    export GUM_FILTER_INDICATOR_FOREGROUND="$BLUE"
-    export GUM_FILTER_MATCH_FOREGROUND="$GREEN"
-    export GUM_FILTER_PROMPT_FOREGROUND="$BLUE"
-    export GUM_FILTER_PLACEHOLDER_FOREGROUND="$MUTED"
-    crate=$(ls {{ crates_dir }} \
-        | gum filter --no-fuzzy --no-fuzzy-sort --reverse --height=20 \
-              --placeholder="pick a crate to build..." --prompt="build › " \
-        || echo "__cancel__")
-    [[ "$crate" == "__cancel__" || -z "$crate" ]] && exit 0
-    cargo build -p "$crate"
-
-# Pick a workspace crate to test.
-[no-exit-message]
-test-pick:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v gum >/dev/null 2>&1 || { echo "needs gum: brew install gum" >&2; exit 1; }
-    BLUE="#0071FF"; GREEN="#1BEB83"; MUTED="#64748B"
-    export GUM_FILTER_INDICATOR_FOREGROUND="$BLUE"
-    export GUM_FILTER_MATCH_FOREGROUND="$GREEN"
-    export GUM_FILTER_PROMPT_FOREGROUND="$BLUE"
-    export GUM_FILTER_PLACEHOLDER_FOREGROUND="$MUTED"
-    crate=$(ls {{ crates_dir }} \
-        | gum filter --no-fuzzy --no-fuzzy-sort --reverse --height=20 \
-              --placeholder="pick a crate to test..." --prompt="test › " \
-        || echo "__cancel__")
-    [[ "$crate" == "__cancel__" || -z "$crate" ]] && exit 0
-    if command -v cargo-insta >/dev/null 2>&1; then
-        cargo insta test --accept -p "$crate"
-    else
-        cargo test -p "$crate"
-    fi
-
-# Pick a single test function to run.
-[no-exit-message]
-test-fn:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v gum >/dev/null 2>&1 || { echo "needs gum: brew install gum" >&2; exit 1; }
-    BLUE="#0071FF"; GREEN="#1BEB83"; MUTED="#64748B"
-    export GUM_FILTER_INDICATOR_FOREGROUND="$BLUE"
-    export GUM_FILTER_MATCH_FOREGROUND="$GREEN"
-    export GUM_FILTER_PROMPT_FOREGROUND="$BLUE"
-    export GUM_FILTER_PLACEHOLDER_FOREGROUND="$MUTED"
-    test=$(cargo test --workspace -- --list 2>/dev/null \
-        | rg ':\s*test$' | sed 's/: test$//' \
-        | gum filter --no-fuzzy --no-fuzzy-sort --reverse --height=22 \
-              --placeholder="type a test name..." --prompt="test fn › " \
-        || echo "__cancel__")
-    [[ "$test" == "__cancel__" || -z "$test" ]] && exit 0
-    if command -v cargo-insta >/dev/null 2>&1; then
-        cargo insta test --accept -- "$test"
-    else
-        cargo test --workspace -- "$test"
-    fi
-
-# Pick a cross-compilation target.
-[no-exit-message]
-cross-pick:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v gum >/dev/null 2>&1 || { echo "needs gum: brew install gum" >&2; exit 1; }
-    BLUE="#0071FF"; GREEN="#1BEB83"; MUTED="#64748B"
-    export GUM_FILTER_INDICATOR_FOREGROUND="$BLUE"
-    export GUM_FILTER_MATCH_FOREGROUND="$GREEN"
-    export GUM_FILTER_PROMPT_FOREGROUND="$BLUE"
-    export GUM_FILTER_PLACEHOLDER_FOREGROUND="$MUTED"
-    target=$(echo "{{ cross_targets }}" | tr ' ' '\n' \
-        | gum filter --no-fuzzy --no-fuzzy-sort --reverse --height=20 \
-              --placeholder="pick a target triple..." --prompt="cross › " \
-        || echo "__cancel__")
-    [[ "$target" == "__cancel__" || -z "$target" ]] && exit 0
-    cross build --release --target "$target"
-
-# Pick a crate and open its lib.rs (or main.rs) in $EDITOR.
-[no-exit-message]
-crate-open:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v gum >/dev/null 2>&1 || { echo "needs gum: brew install gum" >&2; exit 1; }
-    BLUE="#0071FF"; GREEN="#1BEB83"; MUTED="#64748B"
-    export GUM_FILTER_INDICATOR_FOREGROUND="$BLUE"
-    export GUM_FILTER_MATCH_FOREGROUND="$GREEN"
-    export GUM_FILTER_PROMPT_FOREGROUND="$BLUE"
-    export GUM_FILTER_PLACEHOLDER_FOREGROUND="$MUTED"
-    crate=$(ls {{ crates_dir }} \
-        | gum filter --no-fuzzy --no-fuzzy-sort --reverse --height=20 \
-              --placeholder="pick a crate..." --prompt="crate › " \
-        || echo "__cancel__")
-    [[ "$crate" == "__cancel__" || -z "$crate" ]] && exit 0
-    if   [[ -f "{{ crates_dir }}/$crate/src/lib.rs"  ]]; then "${EDITOR:-vim}" "{{ crates_dir }}/$crate/src/lib.rs"
-    elif [[ -f "{{ crates_dir }}/$crate/src/main.rs" ]]; then "${EDITOR:-vim}" "{{ crates_dir }}/$crate/src/main.rs"
-    else echo "no lib.rs/main.rs in {{ crates_dir }}/$crate/src/" >&2; exit 1
-    fi
-
-# Pick a git branch, preview last 10 commits, then checkout (with confirm).
-[no-exit-message]
-branch:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v gum >/dev/null 2>&1 || { echo "needs gum: brew install gum" >&2; exit 1; }
-    BLUE="#0071FF"; GREEN="#1BEB83"; MUTED="#64748B"
-    export GUM_FILTER_INDICATOR_FOREGROUND="$BLUE"
-    export GUM_FILTER_MATCH_FOREGROUND="$GREEN"
-    export GUM_FILTER_PROMPT_FOREGROUND="$BLUE"
-    export GUM_FILTER_PLACEHOLDER_FOREGROUND="$MUTED"
-    export GUM_CONFIRM_PROMPT_FOREGROUND="$BLUE"
-    export GUM_CONFIRM_SELECTED_BACKGROUND="$BLUE"
-    b=$(git branch --all --format='%(refname:short)' \
-        | gum filter --no-fuzzy --no-fuzzy-sort --reverse --height=22 \
-              --placeholder="pick a branch to checkout..." --prompt="branch › " \
-        || echo "__cancel__")
-    [[ "$b" == "__cancel__" || -z "$b" ]] && exit 0
-    echo
-    git log --oneline --graph --color -10 "$b" 2>/dev/null || true
-    echo
-    if gum confirm "Checkout \`$b\`?" --affirmative="Checkout" --negative="Cancel"; then
-        git checkout "$b"
-    fi
-
-# Pick a recent commit, show stat + diff.
-[no-exit-message]
-show:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v gum >/dev/null 2>&1 || { echo "needs gum: brew install gum" >&2; exit 1; }
-    BLUE="#0071FF"; GREEN="#1BEB83"; MUTED="#64748B"
-    export GUM_FILTER_INDICATOR_FOREGROUND="$BLUE"
-    export GUM_FILTER_MATCH_FOREGROUND="$GREEN"
-    export GUM_FILTER_PROMPT_FOREGROUND="$BLUE"
-    export GUM_FILTER_PLACEHOLDER_FOREGROUND="$MUTED"
-    line=$(git log --oneline -50 \
-        | gum filter --no-fuzzy --no-fuzzy-sort --reverse --height=24 \
-              --placeholder="pick a commit to inspect..." --prompt="commit › " \
-        || echo "__cancel__")
-    [[ "$line" == "__cancel__" || -z "$line" ]] && exit 0
-    sha=$(echo "$line" | awk '{print $1}')
-    [[ -z "$sha" ]] && exit 0
-    git show --stat --color "$sha" | (command -v bat >/dev/null 2>&1 && bat --paging=always --color=always --plain || cat)
