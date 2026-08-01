@@ -1,0 +1,83 @@
+# betterhook config — forgecode
+#
+# Dispatch: global core.hooksPath (~/.config/git/hooks) runs
+# `betterhook __dispatch` in every repo; this file alone activates hooks here.
+# Do NOT `betterhook install` (repo-local wrappers shadow global dispatch).
+#
+# Lane split: pre-commit = fast (second-scale) gates only; clippy + test live
+# on pre-push so agent commit loops stay cheap. Per-worktree CARGO_TARGET_DIR
+# isolation keeps parallel agents from corrupting each other's builds.
+
+[meta]
+version = 1
+
+[hooks.pre-commit]
+parallel = true
+fail_fast = false
+priority = ["gitleaks", "rustfmt", "shellcheck"]
+
+# Secrets never land. Fast scan, staged diff only.
+[hooks.pre-commit.jobs.gitleaks]
+builtin = "gitleaks"
+
+# rustfmt must run the NIGHTLY sysroot — .rustfmt.toml uses unstable features
+# (wrap_comments, imports_granularity, …) that stable rustfmt silently
+# mis-evaluates (false drift). Verified 2026-07-30: stable flags
+# crates/forge_main/src/info.rs:75, nightly fmt-check exit 0 on the same tree.
+# builtin = "rustfmt" is the stable channel — do not use it here.
+[hooks.pre-commit.jobs.rustfmt]
+run = """bash -c 'PATH="$(rustup run nightly rustc --print sysroot)/bin:$PATH" \
+  cargo fmt --all -- --check'"""
+glob = ["*.rs", ".rustfmt.toml", "rustfmt.toml"]
+isolate = { tool = "cargo", target_dir = "per-worktree" }
+timeout = "2m"
+
+# Bash surface lane 1: whole tree at -S error. Upstream shell files carry
+# pre-existing warning-severity findings (SC2034/2155/2206/2178, verified
+# 2026-07-30); gating on warnings would block every commit until a dedicated
+# cleanup pass — operator decision, not hook policy.
+[hooks.pre-commit.jobs.shellcheck]
+# exclude list: SC1071 (shellcheck dialect gaps), SC1008/2096/2239/1115 (forge
+# setup-managed block files start with a '# !!' marker, not a shebang;
+# shellcheck misreads it — upstream-owned, not ours to reformat).
+run = "git ls-files -z -- '*.bash' '*.sh' | gxargs -0 -r shellcheck -x -S error --source-path=SCRIPTDIR --exclude=SC1071,SC1008,SC2096,SC2239,SC1115"
+glob = ["*.bash", "*.sh"]
+reads = ["**/*.bash", "**/*.sh"]
+writes = []
+concurrent_safe = true
+
+# Bash surface lane 2: .just helpers (this repo's own harness) at -S warning.
+# New/changed helper code must be warning-clean to land.
+[hooks.pre-commit.jobs.shellcheck-helpers]
+run = "git ls-files -z -- '.just/helpers/*.bash' | gxargs -0 -r shellcheck -x -S warning -P .just/helpers"
+glob = [".just/helpers/**"]
+reads = [".just/**"]
+writes = []
+concurrent_safe = true
+
+[hooks.pre-push]
+parallel = true
+fail_fast = false
+priority = ["fmt-check", "clippy", "test"]
+
+[hooks.pre-push.jobs.fmt-check]
+run = """bash -c 'PATH="$(rustup run nightly rustc --print sysroot)/bin:$PATH" \
+  cargo fmt --all -- --check'"""
+glob = ["*.rs", "rustfmt.toml", ".rustfmt.toml"]
+isolate = { tool = "cargo", target_dir = "per-worktree" }
+timeout = "2m"
+
+[hooks.pre-push.jobs.clippy]
+run = "cargo clippy --workspace --all-targets -- -D warnings"
+glob = ["*.rs", "Cargo.toml", "Cargo.lock"]
+isolate = { tool = "cargo", target_dir = "per-worktree" }
+timeout = "10m"
+
+# matches `just test`: insta when present, plain cargo test otherwise.
+[hooks.pre-push.jobs.test]
+run = """bash -c 'if command -v cargo-insta >/dev/null 2>&1; then \
+  cargo insta test --accept --workspace; else \
+  cargo test --workspace --quiet; fi'"""
+glob = ["*.rs", "Cargo.toml", "Cargo.lock"]
+isolate = { tool = "cargo", target_dir = "per-worktree" }
+timeout = "20m"

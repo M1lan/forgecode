@@ -20,6 +20,8 @@ jobs/**
 .aider*
 .env
 .DS_Store
+# just helper runtime state (fact caches, logs)
+.just/state/
 # Database files
 *.db
 *.db-*

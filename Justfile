@@ -1,12 +1,16 @@
-# ── ForgeCode Justfile -- Build, test, inspect, ship ──
-#
-# `just menu` is the only interactive interface. It discovers every public
-# recipe from this file, displays its source, collects parameters, and runs a
-# reviewed command. All other recipes remain direct, scriptable commands.
+# ── ForgeCode Justfile — build/test/inspect/ship. Rust workspace. TUI+logic in .just/helpers/. ──
+# start here: bare `just` (info splash). machine contract: `just --dump --dump-format json`.
+# menu = the only interactive launcher (fzf list engine + gum param forms + batch).
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set dotenv-load := false
 set positional-arguments := true
+
+# PERF: machine-global BASH_ENV (fnm-init -> shell-id-boot -> agent-bash-env
+# DEBUG-trap) costs 0.3-1.5s per non-interactive bash spawn; `just menu`
+# spawns bash >=2x pre-draw. Neutralized here -> ~24ms/spawn. Escape hatch:
+# JUST_BASH_ENV=<file> just <recipe>. Recipe `eval` re-enables it explicitly.
+export BASH_ENV := env("JUST_BASH_ENV", "")
 
 export RUST_BACKTRACE := "1"
 
@@ -14,30 +18,42 @@ crates_dir := "crates"
 bin := "forge"
 install_dir := env("HOME") / ".local/bin"
 helpers := justfile_directory() / ".just" / "helpers"
+fnm_init := env("HOME") / ".config" / "sh" / "fnm-init.sh"
+
+alias m := menu
+alias f := menu
+alias t := test
+alias b := build
+alias c := check
+alias d := doctor
+alias i := info
 
 # ── Meta ──────────────────────────────────────────────────────────────────────
 
-# Show available public recipes.
+# bare-just splash: facts + countdown → menu
 [private]
-default: help
+[no-exit-message]
+default:
+    @'{{helpers}}/info-screen.bash'
 
-# Print public recipe list for scripts and narrow terminals.
+# machine/agent recipe list (parse `just --dump --dump-format json` instead when scripting)
 [group('meta')]
 help:
     @just --list --unsorted
 
-# Print compact project and tool status.
+# project+tool status screen (no countdown; splash variant)
 [group('meta')]
+[no-exit-message]
 info:
-    @'{{helpers}}/info-screen.bash'
+    @'{{helpers}}/info-screen.bash' --static
 
-# Launch the only interactive recipe browser and runner.
+# the only interactive TUI: fzf over all recipes, gum forms for params, tab batch
 [group('meta')]
 [no-exit-message]
 menu:
     @'{{helpers}}/menu.bash'
 
-# Check local developer tools and AI index availability.
+# dep audit: required/recommended/optional + project checks; exit≠0 when required missing
 [group('meta')]
 doctor:
     @'{{helpers}}/doctor.bash'
@@ -113,10 +129,10 @@ test-one pattern:
 test-nextest *args:
     @if command -v cargo-nextest >/dev/null 2>&1; then cargo nextest run --workspace {{ args }}; else printf 'cargo-nextest not installed\n' >&2; fi
 
-# Run TypeScript eval suite.
+# ts eval suite (node via fnm — re-enables BASH_ENV chain for this recipe only)
 [group('test')]
 eval *args:
-    npm run eval -- {{ args }}
+    BASH_ENV="{{ fnm_init }}" npm run eval -- {{ args }}
 
 # Run zsh format and performance tests.
 [group('test')]
@@ -415,9 +431,19 @@ grepai *args:
 repowise *args:
     @./scripts/ai-tools.bash repowise {{ args }}
 
-# ── Compatibility ─────────────────────────────────────────────────────────────
+# ── Hooks (betterhook) ────────────────────────────────────────────────────────
 
-# Compatibility alias for muscle memory; the sole interface is `just menu`.
-[private]
-[no-exit-message]
-fzf: menu
+# hook status: config parse, jobs, daemon, cache (json)
+[group('verify')]
+hooks:
+    @betterhook status 2>&1 || betterhook doctor
+
+# dry-run pre-commit job plan
+[group('verify')]
+hooks-plan:
+    @betterhook run pre-commit --dry-run
+
+# run pre-commit jobs now (gitleaks + nightly rustfmt + shellcheck lanes)
+[group('verify')]
+hooks-run:
+    @betterhook run pre-commit
