@@ -7,11 +7,13 @@ use forge_config::{ConfigReader, ForgeConfig, ModelConfig};
 use forge_domain::{ConfigOperation, Environment};
 use tracing::debug;
 
-/// Builds a [`forge_domain::Environment`] from runtime context only.
+/// Builds a [`forge_domain::Environment`] from runtime context and platform
+/// policy.
 ///
 /// Only the five fields that cannot be sourced from [`ForgeConfig`] are set
-/// here: `os`, `cwd`, `home`, `shell`, and `base_path`. All configuration
-/// values are now accessed through `EnvironmentInfra::get_config()`.
+/// here: `os`, `cwd`, `home`, `shell`, and `base_path`. Unix commands run under
+/// Bash regardless of the operator's interactive shell. All configuration
+/// values are accessed through `EnvironmentInfra::get_config()`.
 pub fn to_environment(cwd: PathBuf) -> Environment {
     Environment {
         os: std::env::consts::OS.to_string(),
@@ -20,7 +22,7 @@ pub fn to_environment(cwd: PathBuf) -> Environment {
         shell: if cfg!(target_os = "windows") {
             std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string())
         } else {
-            std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
+            "bash".to_string()
         },
         base_path: ConfigReader::base_path(),
     }
@@ -169,6 +171,24 @@ mod tests {
         let fixture_cwd = PathBuf::from("/test/cwd");
         let actual = to_environment(fixture_cwd.clone());
         assert_eq!(actual.cwd, fixture_cwd);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    #[serial_test::serial]
+    fn test_to_environment_uses_bash_instead_of_interactive_shell() {
+        let previous = std::env::var("SHELL").ok();
+        unsafe { std::env::set_var("SHELL", "/bin/zsh") };
+
+        let actual = to_environment(PathBuf::from("/test/cwd"));
+
+        if let Some(value) = previous {
+            unsafe { std::env::set_var("SHELL", value) };
+        } else {
+            unsafe { std::env::remove_var("SHELL") };
+        }
+
+        assert_eq!(actual.shell, "bash");
     }
 
     #[test]
