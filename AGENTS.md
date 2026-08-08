@@ -167,8 +167,14 @@ worktree; a rebase rewrites every SHA, breaks the worktree and forces a push.
 Use `just sync-upstream`, which fast-forwards the mirror and merges.
 `just upstream-status` shows what would land, read-only.
 
-`.github/workflows/*.yml` are **generated** from `crates/forge_ci` — edit the
-Rust, then `just workflows`. Hand-edits are lost on the next `just test`.
+`.github/workflows/` is **fork-owned and hand-written**, and holds exactly one
+minimal build-and-test workflow. Upstream generates seven from `crates/forge_ci`
+as a test side effect; this fork does not — `crates/forge_ci/tests/ci.rs` now
+guards the directory instead of writing it (`just workflows-check`).
+
+**Never put `just` in a CI workflow.** The Justfile is the local developer
+interface: it assumes GNU Bash 5.3+, mise-pinned tools, fzf, gum and a warm
+cargo cache. CI calls cargo directly. A test enforces this.
 
 ## Writing Domain Types
 

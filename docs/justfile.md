@@ -182,7 +182,7 @@ Machine-readable form: `just --dump --dump-format json`.
 |---|---|---|
 | `schema-check` | – | Assert forge.schema.json is current without rewriting it. |
 | `schema` | – | Regenerate forge.schema.json (via the forge_config schema test). |
-| `workflows` | – | Regenerate .github/workflows/*.yml from crates/forge_ci. |
+| `workflows-check` | – | Verify .github/workflows is still the fork's own minimal CI. |
 
 ## upstream
 
