@@ -16,6 +16,30 @@ mis = "mis"
 ba = "ba"
 ratatui = "ratatui"
 
+# UPSTREAM TYPOS, deliberately not fixed on this fork (2026-08-08).
+#
+# All five live in files this fork does not own. Two are identifiers -- a
+# test function name and a match arm -- so "fixing" them is a rename, and
+# the other three are prose in doc comments and an embedded SKILL.md.
+# Correcting any of them buys nothing functional and costs a permanent
+# conflict point against `upstream/main` on every `just sync-upstream`,
+# forever. Suppressed here so `just ci` stays green and `just typos` keeps
+# catching NEW typos in code this fork actually writes.
+#
+#   respone      crates/forge_domain/src/tools/call/parser.rs:201 (test fn name)
+#   unknow       crates/forge_app/src/dto/anthropic/response.rs:432
+#   informations crates/forge_repo/src/skill.rs:233 (doc comment)
+#   unparseable  crates/forge_main/src/ui.rs:4832 (doc comment; also a real word)
+#   auxilary     crates/forge_repo/src/skills/create-skill/SKILL.md:111 (embedded)
+#
+# If upstream ever fixes one, drop its line here -- `just typos` will then
+# hold the fork to the corrected spelling.
+respone = "respone"
+unknow = "unknow"
+informations = "informations"
+unparseable = "unparseable"
+auxilary = "auxilary"
+
 [files]
 extend-exclude = [
     "crates/forge_app/src/fixtures/*.json",

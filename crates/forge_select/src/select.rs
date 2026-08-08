@@ -117,9 +117,18 @@ impl<T: 'static> SelectBuilder<T> {
             } else {
                 crate::comint::prompt_select_line(&self.message, &displays)?
             };
-            return Ok(chosen.map(|relative_index| {
+            // FORK PATCH (mymain, 2026-08-08): `.get()` rather than `[]`.
+            // CI's autofix workflow denies clippy::indexing_slicing, but
+            // nothing local ever ran that lint, so this indexing shipped.
+            // `relative_index` arrives from the frontend over the comint
+            // protocol and `header_lines` is added to it, so the sum could
+            // exceed `options` on a stale or malformed reply and panic the
+            // CLI. Out of range now means "no selection".
+            // On upstream merge: if this hunk conflicts, take upstream's
+            // shape and re-apply `.get(..).cloned()`; run `just clippy-strict`.
+            return Ok(chosen.and_then(|relative_index| {
                 let absolute = relative_index + self.header_lines;
-                self.options[absolute].clone()
+                self.options.get(absolute).cloned()
             }));
         }
 

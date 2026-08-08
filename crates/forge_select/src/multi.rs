@@ -59,7 +59,19 @@ impl<T> MultiSelectBuilder<T> {
             }
 
             let chosen = crate::comint::prompt_select_line(&self.message, &displays)?;
-            return Ok(chosen.map(|index| vec![self.options[index].clone()]));
+            // FORK PATCH (mymain, 2026-08-08): `.get()` rather than `[]`.
+            // CI's autofix workflow denies clippy::indexing_slicing, but
+            // nothing local ever ran that lint, so this indexing shipped.
+            // The index comes back from the frontend over the comint
+            // protocol, i.e. from outside this process, so a stale or
+            // malformed reply used to panic the whole CLI. Out of range now
+            // means "no selection", matching the `.get(i).cloned()` filter
+            // the backend branch above already uses.
+            // On upstream merge: if this hunk conflicts, take upstream's
+            // shape and re-apply `.get(..).cloned()`; run `just clippy-strict`.
+            return Ok(chosen
+                .and_then(|index| self.options.get(index).cloned())
+                .map(|option| vec![option]));
         }
 
         if !std::io::stderr().is_terminal() {
