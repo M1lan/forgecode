@@ -129,7 +129,7 @@ it is meant to be a pure mirror. inspect it, then reset it deliberately."
 
   printf 'merging %s commits from %s into %s\n' "$behind" "$MIRROR_BRANCH" "$branch"
   if git merge --no-edit "$MIRROR_BRANCH"; then
-    printf '\n%smerged.%s next: just verify\n' "$C_GREEN" "$C_RESET"
+    printf '\n%smerged.%s next: just ci\n' "$C_GREEN" "$C_RESET"
   else
     printf '\n%sconflicts.%s resolve them, then:\n' "$C_YELLOW" "$C_RESET" >&2
     printf '  git status            see what conflicts\n' >&2

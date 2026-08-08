@@ -104,7 +104,7 @@ panel_quickstart() {
   printf '  %sjust build%s     compile workspace\n' "$C_BOLD" "$C_RESET"
   printf '  %sjust test%s      insta test suite\n' "$C_BOLD" "$C_RESET"
   printf '  %sjust lint%s      fmt-check + clippy\n' "$C_BOLD" "$C_RESET"
-  printf '  %sjust verify%s    pre-push gate\n' "$C_BOLD" "$C_RESET"
+  printf '  %sjust ci%s        fix + verify gate\n' "$C_BOLD" "$C_RESET"
   printf '  %sjust ci%s        local CI mirror\n' "$C_BOLD" "$C_RESET"
   printf '  %sjust menu%s      interactive TUI\n' "$C_BOLD" "$C_RESET"
 }
