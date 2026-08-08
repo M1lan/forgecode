@@ -1,4 +1,4 @@
-# ── ForgeCode Justfile — build/test/inspect/ship. Rust workspace. TUI+logic in .just/helpers/. ──
+# --- ForgeCode Justfile -- build/test/inspect/ship. Rust workspace. TUI+logic in .just/helpers/. ---
 # start here: bare `just` (info splash). machine contract: `just --dump --dump-format json`.
 # menu = the only interactive launcher (fzf list engine + gum param forms + batch).
 
@@ -6,19 +6,23 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 set dotenv-load := false
 set positional-arguments := true
 
-# PERF: machine-global BASH_ENV (fnm-init -> shell-id-boot -> agent-bash-env
-# DEBUG-trap) costs 0.3-1.5s per non-interactive bash spawn; `just menu`
-# spawns bash >=2x pre-draw. Neutralized here -> ~24ms/spawn. Escape hatch:
-# JUST_BASH_ENV=<file> just <recipe>. Recipe `eval` re-enables it explicitly.
+# PERF: machine-global BASH_ENV (shell-id-boot -> agent-bash-env DEBUG-trap)
+# costs 0.3-1.5s per non-interactive bash spawn; `just menu` spawns bash
+# >=2x pre-draw. Neutralized here -> ~24ms/spawn. Escape hatch:
+# JUST_BASH_ENV=<file> just <recipe>. Node/npm resolve via mise shims
+# already on PATH -- no activation script needed for `just eval`.
 export BASH_ENV := env("JUST_BASH_ENV", "")
 
 export RUST_BACKTRACE := "1"
 
 crates_dir := "crates"
 bin := "forge"
-install_dir := env("HOME") / ".local/bin"
 helpers := justfile_directory() / ".just" / "helpers"
-fnm_init := env("HOME") / ".config" / "sh" / "fnm-init.sh"
+# Canonical install dir: fixed to ~/.cargo/bin, by explicit request --
+# CARGO_HOME, CARGO_INSTALL_ROOT, and Cargo's own install.root config are
+# deliberately NOT honored here. `install-release` always writes {{ bin }}
+# to this one literal path; install-audit checks the same fixed path.
+cargo_bin_dir := env("HOME") / ".cargo" / "bin"
 
 alias m := menu
 alias f := menu
@@ -28,9 +32,9 @@ alias c := check
 alias d := doctor
 alias i := info
 
-# ── Meta ──────────────────────────────────────────────────────────────────────
+# --- Meta ---
 
-# bare-just splash: facts + countdown → menu
+# bare-just splash: facts + countdown -> menu
 [private]
 [no-exit-message]
 default:
@@ -53,12 +57,12 @@ info:
 menu:
     @'{{helpers}}/menu.bash'
 
-# dep audit: required/recommended/optional + project checks; exit≠0 when required missing
+# dep + project audit (3 tiers + project checks + installed-binary shadow check); exit 0 clean/not-installed, 1 REQUIRED dep or project check failed, 3 active PATH shadow
 [group('meta')]
 doctor:
     @'{{helpers}}/doctor.bash'
 
-# ── Build ─────────────────────────────────────────────────────────────────────
+# --- Build ---
 
 # Type-check workspace targets.
 [group('build')]
@@ -85,7 +89,7 @@ build-crate crate:
 build-debug:
     cargo build -p forge_main
 
-# ── Run & Watch ───────────────────────────────────────────────────────────────
+# --- Run & Watch ---
 
 # Run forge with arguments.
 [group('run')]
@@ -107,7 +111,7 @@ watch-test:
 watch-crate crate:
     @if command -v cargo-watch >/dev/null 2>&1; then cargo watch -x "insta test --accept -p {{ crate }}"; else printf 'cargo-watch not installed\n' >&2; fi
 
-# ── Test ──────────────────────────────────────────────────────────────────────
+# --- Test ---
 
 # Run workspace tests with insta auto-accept.
 [group('test')]
@@ -129,27 +133,31 @@ test-one pattern:
 test-nextest *args:
     @if command -v cargo-nextest >/dev/null 2>&1; then cargo nextest run --workspace {{ args }}; else printf 'cargo-nextest not installed\n' >&2; fi
 
-# ts eval suite (node via fnm — re-enables BASH_ENV chain for this recipe only)
+# ts eval suite (node/npm resolve via mise shims already on PATH)
 [group('test')]
 eval *args:
-    BASH_ENV="{{ fnm_init }}" npm run eval -- {{ args }}
+    npm run eval -- {{ args }}
 
 # Run zsh format and performance tests.
 [group('test')]
 test-zsh:
     zsh scripts/test-zsh-utils.sh
 
-# Parse-check embedded Bash plugin.
+# Parse-check installer/plugins/helpers and run install PATH/audit regressions.
 [group('test')]
 test-bash:
+    @sh -n cli
+    @FORGE_SELF_TEST_PATH=1 sh cli
     bash -n shell-plugin/bash/forge.plugin.bash
+    @for f in '{{helpers}}'/*.bash; do bash -n "$f" || exit 1; done
+    @'{{helpers}}/install-audit.bash' --self-test
 
 # Parse-check Fish plugin when installed.
 [group('test')]
 test-fish:
     @if command -v fish >/dev/null 2>&1; then fish --no-execute shell-plugin/fish/forge.plugin.fish; else printf 'fish not installed; skipping\n' >&2; fi
 
-# ── Lint & Format ─────────────────────────────────────────────────────────────
+# --- Lint & Format ---
 
 # Run clippy with warnings denied.
 [group('lint')]
@@ -171,29 +179,34 @@ fmt:
 fmt-check:
     PATH="$(rustup run nightly rustc --print sysroot)/bin:$PATH" cargo fmt --all -- --check
 
-# Run Rust format and clippy checks.
+# Run Rust format, clippy, and maintained shell checks.
 [group('lint')]
-lint: fmt-check clippy
+lint: fmt-check clippy shellcheck
 
 # Apply Rust formatting and clippy fixes.
 [group('lint')]
 fix: fmt clippy-fix
 
-# Lint Bash scripts and Justfile helpers.
+# Lint Justfile helpers + POSIX installer; blocking Justfile-system gate.
 [group('lint')]
 shellcheck:
-    @if command -v shellcheck >/dev/null 2>&1; then shellcheck --exclude=SC1071 --source-path=SCRIPTDIR -x scripts/*.sh scripts/*.bash '{{helpers}}'/*.bash; else printf 'shellcheck not installed\n' >&2; fi
+    @if command -v shellcheck >/dev/null 2>&1; then shellcheck --exclude=SC1071 --source-path=SCRIPTDIR -x '{{helpers}}'/*.bash && shellcheck --shell=sh --exclude=SC2059 cli; else printf 'shellcheck not installed\n' >&2; fi
+
+# Lint legacy scripts/*.sh + scripts/*.bash; informational only, pre-existing findings never fail this gate.
+[group('lint')]
+shellcheck-legacy:
+    @if command -v shellcheck >/dev/null 2>&1; then shellcheck --exclude=SC1071 --source-path=SCRIPTDIR -x scripts/*.sh scripts/*.bash || printf 'shellcheck-legacy: pre-existing findings above are informational only\n' >&2; else printf 'shellcheck not installed\n' >&2; fi
 
 # Lint Markdown files.
 [group('lint')]
 rumdl:
     @if command -v rumdl >/dev/null 2>&1; then rumdl .; else printf 'rumdl not installed\n' >&2; fi
 
-# ── Verify ────────────────────────────────────────────────────────────────────
+# --- Verify ---
 
 # Run full pre-push verification.
 [group('verify')]
-verify: fmt-check clippy test
+verify: fmt-check clippy shellcheck test test-bash
 
 # Run fast pre-push checks.
 [group('verify')]
@@ -201,7 +214,7 @@ pre-push: fmt-check check clippy
 
 # Run local CI checks.
 [group('verify')]
-ci: check lint test
+ci: check lint test test-bash
 
 # Check known Rust security vulnerabilities.
 [group('verify')]
@@ -218,7 +231,7 @@ machete:
 deny:
     @if command -v cargo-deny >/dev/null 2>&1; then cargo deny check; else printf 'cargo-deny not installed\n' >&2; fi
 
-# ── Coverage & Benchmark ──────────────────────────────────────────────────────
+# --- Coverage & Benchmark ---
 
 # Generate LCOV coverage report.
 [group('coverage')]
@@ -240,7 +253,7 @@ bench-rprompt:
 bench *args:
     ./scripts/benchmark.sh {{ args }}
 
-# ── Database ──────────────────────────────────────────────────────────────────
+# --- Database ---
 
 # Apply pending Diesel migrations.
 [group('database')]
@@ -262,7 +275,7 @@ db-schema:
 db-new name:
     diesel migration generate {{ name }}
 
-# ── Release ───────────────────────────────────────────────────────────────────
+# --- Release ---
 
 # Cross-compile release target.
 [group('release')]
@@ -274,41 +287,45 @@ cross target:
 schema:
     cargo run -p forge_main -- schema > forge.schema.json
 
-# Build and install release forge binary.
+# Build and install release forge binary via cargo (canonical, fixed path: {{ cargo_bin_dir }}/{{ bin }}).
 [group('release')]
 install-release:
     #!/usr/bin/env bash
     set -euo pipefail
-    cargo build --release
-    mkdir -p "{{ install_dir }}"
-    cp -f target/release/{{ bin }} "{{ install_dir }}/{{ bin }}"
-    if [[ "$(uname -s)" == "Darwin" ]]; then codesign --force --sign - "{{ install_dir }}/{{ bin }}"; fi
-    "{{ install_dir }}/{{ bin }}" --version
+    cargo install --path crates/forge_main --force --root "$HOME/.cargo"
+    bin_path="{{ cargo_bin_dir }}/{{ bin }}"
+    if [[ "$(uname -s)" == "Darwin" ]]; then codesign --force --sign - "$bin_path"; fi
+    "$bin_path" --version
 
-# Build and install debug forge binary.
+# Build and install debug forge binary as {{ bin }}-debug (a distinct filename -- can never collide with the canonical {{ bin }} release binary).
 [group('release')]
 install-debug: build-debug
     #!/usr/bin/env bash
     set -euo pipefail
-    mkdir -p "{{ install_dir }}"
-    cp -f target/debug/{{ bin }} "{{ install_dir }}/{{ bin }}-debug"
-    if [[ "$(uname -s)" == "Darwin" ]]; then codesign --force --sign - "{{ install_dir }}/{{ bin }}-debug"; fi
-    "{{ install_dir }}/{{ bin }}-debug" --version
+    mkdir -p "{{ cargo_bin_dir }}"
+    debug_bin="{{ cargo_bin_dir }}/{{ bin }}-debug"
+    cp -f target/debug/{{ bin }} "$debug_bin"
+    if [[ "$(uname -s)" == "Darwin" ]]; then codesign --force --sign - "$debug_bin"; fi
+    "$debug_bin" --version
 
 # Install release and debug forge binaries.
 [group('release')]
 install-both: install-release install-debug
 
-# Install release forge binary compatibility alias.
+# Install release forge binary (compatibility alias).
 [group('release')]
 install-local: install-release
 
-# Install debug forge through cargo.
+# Install release forge binary (compatibility alias -- see install-release).
 [group('release')]
-install:
-    cargo install --path crates/forge_main
+install: install-release
 
-# ── Utilities ─────────────────────────────────────────────────────────────────
+# Enumerate PATH shadows for {{ bin }}; fails when the winner isn't the fixed {{ cargo_bin_dir }}/{{ bin }}. Never deletes shadows.
+[group('release')]
+install-audit:
+    @'{{helpers}}/install-audit.bash' --table
+
+# --- Utilities ---
 
 # Remove build artifacts.
 [group('clean')]
@@ -374,7 +391,7 @@ outdated:
 bloat:
     @if command -v cargo-bloat >/dev/null 2>&1; then cargo bloat --release -n 20; else printf 'cargo-bloat not installed\n' >&2; fi
 
-# ── AI Code Intelligence ──────────────────────────────────────────────────────
+# --- AI Code Intelligence ---
 
 # Check local AI-tool and index status.
 [group('ai')]
@@ -431,7 +448,7 @@ grepai *args:
 repowise *args:
     @./scripts/ai-tools.bash repowise {{ args }}
 
-# ── Hooks (betterhook) ────────────────────────────────────────────────────────
+# --- Hooks (betterhook) ---
 
 # hook status: config parse, jobs, daemon, cache (json)
 [group('verify')]

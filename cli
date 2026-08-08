@@ -128,60 +128,116 @@ prepend_to_path() {
   esac
 }
 
-# Persist PATH precedence for future bash/zsh shells so user-local binaries win.
-# Skips modification if $INSTALL_DIR is already on the running PATH or already
-# referenced in any common shell startup file (.zshenv, .zshrc, .bashrc,
-# .bash_profile, .profile).  This prevents the installer from clobbering shell
-# RCs when the user has already configured the path elsewhere.
+# Persist deterministic PATH precedence for future bash/zsh shells. Each call
+# normalizes installer-managed entries for one directory in .bashrc and
+# .zshrc, then appends the fresh entry. Appending matters: startup files run
+# top-to-bottom, so the last export gets highest PATH precedence. Call this
+# for the dependency-tools directory first and forge's canonical directory
+# last. Existing user-authored PATH lines remain untouched; the final forge
+# export still wins over them.
 ensure_install_dir_shell_path() {
-  # 1) Runtime check: if the directory is already on $PATH, nothing to do.
-  case ":$PATH:" in
-    *":$INSTALL_DIR:"*)
-      printf "${GREEN}✓ %s is already in PATH${NC}\n" "$INSTALL_DIR"
-      return 0
-      ;;
-  esac
-
-  # 2) File check: scan all common startup files for an existing reference to
-  #    $INSTALL_DIR.  This catches cases where e.g. .zshenv or .profile
-  #    configures PATH but the current (piped-to-sh) shell doesn't see it.
-  for check_file in "$HOME/.zshenv" "$HOME/.zshrc" "$HOME/.bashrc" \
-                     "$HOME/.bash_profile" "$HOME/.profile"; do
-    if [ -f "$check_file" ] && grep -qF "$INSTALL_DIR" "$check_file"; then
-      printf "${GREEN}✓ %s is already configured in %s${NC}\n" "$INSTALL_DIR" "$check_file"
-      return 0
-    fi
-  done
-
-  # 3) Not configured anywhere — add to .bashrc and .zshrc.
-  export_line="export PATH=\"$INSTALL_DIR:\$PATH\""
-  marker="# Added by ForgeCode installer"
+  target_dir="$1"
+  export_line="export PATH=\"$target_dir:\$PATH\""
+  marker="# Added by ForgeCode installer ($target_dir)"
 
   for rc_file in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    temp_rc=$(mktemp)
+
     if [ -f "$rc_file" ]; then
-      # File exists: strip any previous marker/export lines then prepend fresh ones.
-      # Use grep -F (fixed-string) so backslashes in Windows paths (e.g. \U, \A)
-      # are never interpreted as escape sequences.
-      # '|| true' prevents set -e from aborting when no lines matched — a non-zero
-      # exit from grep -v simply means nothing was removed, which is fine.
-      temp_rc=$(mktemp)
-      grep -vF "$marker" "$rc_file" | grep -vF "$export_line" > "$temp_rc" || true
-      {
-        printf '%s\n' "$marker"
-        printf '%s\n' "$export_line"
-        cat "$temp_rc"
-      } > "$temp_rc.new"
-      mv "$temp_rc.new" "$rc_file"
-      rm -f "$temp_rc"
-    else
-      # File does not exist: create it with just the marker and export line.
-      {
-        printf '%s\n' "$marker"
-        printf '%s\n' "$export_line"
-      } > "$rc_file"
+      # Remove entries previously managed by this installer. Also migrate the
+      # legacy unqualified marker used when forge itself lived in
+      # ~/.local/bin. Fixed-string matching keeps Windows paths literal.
+      grep -vF "$marker" "$rc_file" |
+        grep -vF "$export_line" |
+        grep -vxF '# Added by ForgeCode installer' > "$temp_rc" || true
+    fi
+
+    {
+      cat "$temp_rc"
+      printf '%s\n' "$marker"
+      printf '%s\n' "$export_line"
+    } > "$temp_rc.new"
+    mv "$temp_rc.new" "$rc_file"
+    rm -f "$temp_rc"
+  done
+
+  printf "${GREEN}✓ %s configured for future shells${NC}\n" "$target_dir"
+}
+
+# Exercise PATH migration without downloads or installation. Hidden harness
+# entrypoint used by `just test-bash`; production invocations never set it.
+self_test_shell_path() {
+  test_root=$(mktemp -d)
+  HOME="$test_root/home"
+  INSTALL_DIR="$HOME/.local/bin"
+  FORGE_INSTALL_DIR="$HOME/.cargo/bin"
+  mkdir -p "$HOME"
+
+  shell_path=$(command -v sh)
+
+  assert_path_precedence() {
+    case_name="$1"
+    rc_file="$2"
+    actual=$(env PATH=/base "$shell_path" -c ". \"\$1\"; printf '%s' \"\$PATH\"" sh "$rc_file")
+    case "$actual" in
+      "$FORGE_INSTALL_DIR:$INSTALL_DIR:"*) ;;
+      *)
+        printf 'FAIL: %s %s: PATH precedence wrong: %s\n' "$case_name" "$rc_file" "$actual" >&2
+        rm -rf "$test_root"
+        exit 1
+        ;;
+    esac
+  }
+
+  assert_startup_files() {
+    case_name="$1"
+    assert_path_precedence "$case_name" "$HOME/.bashrc"
+    assert_path_precedence "$case_name" "$HOME/.zshrc"
+  }
+
+  : > "$HOME/.bashrc"
+  : > "$HOME/.zshrc"
+  ensure_install_dir_shell_path "$INSTALL_DIR" > /dev/null
+  ensure_install_dir_shell_path "$FORGE_INSTALL_DIR" > /dev/null
+  assert_startup_files empty
+
+  for rc_file in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    printf '%s\n%s\n%s\n' \
+      '# Added by ForgeCode installer' \
+      "export PATH=\"/legacy/forge/bin:\$PATH\"" \
+      "export PATH=\"\$HOME/.local/bin:\$PATH\"" > "$rc_file"
+  done
+  ensure_install_dir_shell_path "$INSTALL_DIR" > /dev/null
+  ensure_install_dir_shell_path "$FORGE_INSTALL_DIR" > /dev/null
+  assert_startup_files legacy
+
+  for rc_file in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if ! grep -qF "export PATH=\"\$HOME/.local/bin:\$PATH\"" "$rc_file"; then
+      printf 'FAIL: user-authored PATH line removed from %s\n' "$rc_file" >&2
+      rm -rf "$test_root"
+      exit 1
     fi
   done
+
+  for rc_file in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    printf '%s\n%s\n%s\n%s\n' \
+      "# Added by ForgeCode installer ($FORGE_INSTALL_DIR)" \
+      "export PATH=\"$FORGE_INSTALL_DIR:\$PATH\"" \
+      "# Added by ForgeCode installer ($INSTALL_DIR)" \
+      "export PATH=\"$INSTALL_DIR:\$PATH\"" > "$rc_file"
+  done
+  ensure_install_dir_shell_path "$INSTALL_DIR" > /dev/null
+  ensure_install_dir_shell_path "$FORGE_INSTALL_DIR" > /dev/null
+  assert_startup_files mixed
+
+  rm -rf "$test_root"
+  printf 'cli PATH self-test: ok\n'
 }
+
+if [ "${FORGE_SELF_TEST_PATH:-0}" = "1" ]; then
+  self_test_shell_path
+  exit 0
+fi
 
 # Function to install fzf
 install_fzf() {
@@ -592,6 +648,15 @@ get_libc_info() {
 # Detect OS
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 
+# INSTALL_DIR holds the dependency tools (fzf, bat, fd). FORGE_INSTALL_DIR
+# holds the forge binary itself and is a *separate* directory on Linux and
+# macOS: ~/.cargo/bin is the one canonical location any Rust dev shell (and
+# this repo's own Justfile install-release recipe) already expects forge to
+# live in, so the two concerns must never be conflated into a single dir.
+# Android and Windows keep forge and the tools sharing one directory, since
+# neither platform has a ~/.cargo/bin PATH convention wired into this
+# installer.
+
 # Check for Android first
 if [ "$OS" = "linux" ] && is_android; then
   TARGET="$ARCH-linux-android"
@@ -602,6 +667,7 @@ if [ "$OS" = "linux" ] && is_android; then
   else
     INSTALL_DIR="$PREFIX/bin"
   fi
+  FORGE_INSTALL_DIR="$INSTALL_DIR"
   USE_SUDO=false
 else
   case $OS in
@@ -619,6 +685,7 @@ else
       TARGET_EXT=""
       # Prefer user-local directory to avoid sudo
       INSTALL_DIR="$HOME/.local/bin"
+      FORGE_INSTALL_DIR="$HOME/.cargo/bin"
       USE_SUDO=false
       ;;
     darwin)
@@ -627,6 +694,7 @@ else
       TARGET_EXT=""
       # Prefer user-local directory to avoid sudo
       INSTALL_DIR="$HOME/.local/bin"
+      FORGE_INSTALL_DIR="$HOME/.cargo/bin"
       USE_SUDO=false
       ;;
     msys* | mingw* | cygwin* | windows*)
@@ -639,6 +707,7 @@ else
       else
         INSTALL_DIR="$HOME/.local/bin"
       fi
+      FORGE_INSTALL_DIR="$INSTALL_DIR"
       USE_SUDO=false
       ;;
     *)
@@ -697,18 +766,22 @@ if [ "$download_success" != "true" ]; then
   exit 1
 fi
 
-# Create install directory if it doesn't exist
-if [ ! -d "$INSTALL_DIR" ]; then
-  printf "${BLUE}Creating installation directory: %s${NC}\n" "$INSTALL_DIR"
-  if [ "$USE_SUDO" = true ]; then
-    sudo mkdir -p "$INSTALL_DIR"
-  else
-    mkdir -p "$INSTALL_DIR"
+# Create install directories if they don't exist. FORGE_INSTALL_DIR and
+# INSTALL_DIR are the same directory on Android/Windows, in which case the
+# second loop iteration is a harmless no-op (already created).
+for dir_to_create in "$FORGE_INSTALL_DIR" "$INSTALL_DIR"; do
+  if [ ! -d "$dir_to_create" ]; then
+    printf "${BLUE}Creating installation directory: %s${NC}\n" "$dir_to_create"
+    if [ "$USE_SUDO" = true ]; then
+      sudo mkdir -p "$dir_to_create"
+    else
+      mkdir -p "$dir_to_create"
+    fi
   fi
-fi
+done
 
 # Install
-INSTALL_PATH="$INSTALL_DIR/$BINARY_NAME"
+INSTALL_PATH="$FORGE_INSTALL_DIR/$BINARY_NAME"
 printf "${BLUE}Installing to %s...${NC}\n" "$INSTALL_PATH"
 if [ "$USE_SUDO" = true ]; then
   sudo mv "$TEMP_BINARY" "$INSTALL_PATH"
@@ -718,69 +791,59 @@ else
   chmod +x "$INSTALL_PATH"
 fi
 
-# Ensure future shells prefer the user-local install directory.
-ensure_install_dir_shell_path
+# Ensure future shells prefer forge's canonical bin over dependency-tools.
+# Startup files execute top-to-bottom; append local tools first, forge last.
+ensure_install_dir_shell_path "$INSTALL_DIR"
+if [ "$INSTALL_DIR" != "$FORGE_INSTALL_DIR" ]; then
+  ensure_install_dir_shell_path "$FORGE_INSTALL_DIR"
+fi
 
 # Add to PATH if necessary (for Windows or non-standard install locations)
 if [ "$OS" = "windows" ] || [ "$OS" = "msys" ] || [ "$OS" = "mingw" ] || [ "$OS" = "cygwin" ]; then
-  if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
-    printf "${YELLOW}Note: You may need to add %s to your PATH${NC}\n" "$INSTALL_DIR"
+  if ! echo "$PATH" | grep -q "$FORGE_INSTALL_DIR"; then
+    printf "${YELLOW}Note: You may need to add %s to your PATH${NC}\n" "$FORGE_INSTALL_DIR"
   fi
 fi
 
-# Verify installation
+# Verify installation: check the freshly installed binary directly at its
+# known path, never via a `command -v forge` PATH lookup -- PATH could still
+# resolve to a different, possibly stale, forge that sits earlier on it (a
+# leftover ~/.local/bin/forge from an older installer version, for example).
 printf "\n"
-if command -v forge > /dev/null 2>&1; then
-  printf "${GREEN}✓ Forge has been successfully installed!${NC}\n"
-  forge --version 2> /dev/null || true
+if [ -x "$INSTALL_PATH" ]; then
+  printf "${GREEN}✓ Forge has been installed to %s${NC}\n" "$INSTALL_PATH"
+  "$INSTALL_PATH" --version 2> /dev/null || true
+else
+  printf "${RED}✗ Installation verification failed: %s is not executable${NC}\n" "$INSTALL_PATH" >&2
+  rm -rf "$TMP_DIR"
+  exit 1
+fi
+
+if echo "$PATH" | grep -qF "$FORGE_INSTALL_DIR"; then
   printf "${BLUE}Run 'forge' to get started.${NC}\n"
 else
-  printf "${GREEN}✓ Forge has been installed to %s${NC}\n" "$INSTALL_PATH"
   printf "\n"
   printf "${YELLOW}The 'forge' command is not in your PATH yet.${NC}\n"
+  printf "${BLUE}Add it to your PATH by running:${NC}\n"
 
-  # Check if the install directory is in PATH
-  if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
-    printf "${BLUE}Add it to your PATH by running:${NC}\n"
-
-    # Detect shell from SHELL variable and provide appropriate instructions
-    shell_name=$(basename "${SHELL:-sh}")
-    case "$shell_name" in
-      zsh)
-        printf "  echo 'export PATH=\"%s:\$PATH\"' >> ~/.zshrc\n" "$INSTALL_DIR"
-        printf "  source ~/.zshrc\n"
-        ;;
-      bash)
-        printf "  echo 'export PATH=\"%s:\$PATH\"' >> ~/.bashrc\n" "$INSTALL_DIR"
-        printf "  source ~/.bashrc\n"
-        ;;
-      fish)
-        printf "  fish_add_path %s\n" "$INSTALL_DIR"
-        ;;
-      *)
-        printf "  export PATH=\"%s:\$PATH\"\n" "$INSTALL_DIR"
-        ;;
-    esac
-  else
-    printf "${BLUE}Restart your shell or run:${NC}\n"
-
-    # Detect shell and provide appropriate source command
-    shell_name=$(basename "${SHELL:-sh}")
-    case "$shell_name" in
-      zsh)
-        printf "  source ~/.zshrc\n"
-        ;;
-      bash)
-        printf "  source ~/.bashrc\n"
-        ;;
-      fish)
-        printf "  Restart your terminal (fish doesn't need source)\n"
-        ;;
-      *)
-        printf "  Restart your terminal\n"
-        ;;
-    esac
-  fi
+  # Detect shell from SHELL variable and provide appropriate instructions
+  shell_name=$(basename "${SHELL:-sh}")
+  case "$shell_name" in
+    zsh)
+      printf "  echo 'export PATH=\"%s:\$PATH\"' >> ~/.zshrc\n" "$FORGE_INSTALL_DIR"
+      printf "  source ~/.zshrc\n"
+      ;;
+    bash)
+      printf "  echo 'export PATH=\"%s:\$PATH\"' >> ~/.bashrc\n" "$FORGE_INSTALL_DIR"
+      printf "  source ~/.bashrc\n"
+      ;;
+    fish)
+      printf "  fish_add_path %s\n" "$FORGE_INSTALL_DIR"
+      ;;
+    *)
+      printf "  export PATH=\"%s:\$PATH\"\n" "$FORGE_INSTALL_DIR"
+      ;;
+  esac
 fi
 
 # Install dependencies (fzf, bat, fd)
