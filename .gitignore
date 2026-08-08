@@ -49,12 +49,19 @@ node_modules/
 bench/__pycache__
 .ai/
 
-# AI code-intelligence indexes (built locally via scripts/ai-tools.bash)
+# AI code-intelligence indexes (built locally via `just ai init`)
 .grepai/
 .repowise
 .codegraph/
 .gitnexus/
 .mdless_tmp/
+
+# Isolated FORGE_CONFIG state dir used by `just run` and the db-* recipes, so
+# they never touch the operator's live ~/forge tree.
+.forge-sandbox/
+
+# `just coverage` output
+lcov.info
 
 # Harness/editor spy dirs (not part of forgecode)
 .clinerules/

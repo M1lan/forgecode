@@ -1,0 +1,55 @@
+# mise — project-pinned toolchain for forgecode
+#
+# WHY THIS FILE EXISTS
+# Before it, this repo had no mise config at all. Every `command -v` check in
+# the Justfile was really measuring ~/.config/mise/config.toml — the operator's
+# global tool zoo — so `just doctor` reported on the laptop, not on the project.
+# Two developers (or one developer and one agent) could get different answers
+# for "is this repo buildable". These pins make the required set explicit and
+# reproducible.
+#
+# SCOPE — read before adding anything here.
+#
+#   Rust is NOT managed by mise. rustup owns the Rust toolchain on this machine
+#   (see rust-toolchain.toml, channel 1.97). Adding a `rust` entry here would
+#   shadow the rustup shims and silently change which compiler builds the
+#   workspace. Nightly rustfmt in particular is resolved through
+#   `rustup run nightly` by both the Justfile and betterhook.
+#
+#   Only tools that a BLOCKING gate depends on belong in [tools]. Everything
+#   optional — cargo-audit, cargo-deny, cargo-machete, cargo-llvm-cov,
+#   cargo-outdated, cargo-bloat, cargo-nextest, cargo-watch, tokei, cross,
+#   diesel_cli, typos, rumdl — is handled by `just doctor`, which reports what
+#   is missing and offers to install it. Pinning them all here would force a
+#   long `mise install` on anyone who only wants to run `cargo check`.
+#
+# FIRST USE
+#   mise trust && mise install
+#
+# The operator's global config still supplies these same tools at different
+# versions. A project config wins over the global one, so the pins below are
+# what this repo actually gets.
+
+[tools]
+# `just eval` runs `npm run eval` -> tsx benchmarks/cli.ts. Pinned to the LTS
+# line the global config was already resolving to, not to latest — the eval
+# suite has never been exercised on node 26.
+node = "22.20.0"
+
+# `just test` and `just verify` run `cargo insta test --accept`. AGENTS.md
+# mandates insta snapshots for this workspace. It was MISSING on this machine,
+# which is why `just test` silently degraded to plain `cargo test` and stopped
+# updating snapshots. This pin is the fix.
+"cargo:cargo-insta" = "1.48.0"
+
+# `just shellcheck` is a blocking gate over .just/helpers/*.bash and the POSIX
+# `cli` installer, and betterhook runs the same lanes on pre-commit. Both must
+# agree on one shellcheck version or a commit can pass locally and fail in the
+# hook.
+shellcheck = "0.11.0"
+
+[settings]
+# Never silently reach for a version that is not installed; fail and let
+# `just doctor` say what to do. Matches the fail-loud rule the Justfile follows
+# for every external tool.
+auto_install = false
