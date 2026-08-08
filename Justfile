@@ -534,6 +534,10 @@ clean-report:
 clean:
     @'{{ helpers }}/clean.bash' target
 
+# Remove all build artifacts, then rebuild the forge binary from scratch.
+[group('clean')]
+rebuild: clean build
+
 # Drop incremental-compilation caches and stale profile dirs, keep the rest.
 [group('clean')]
 clean-stale:
@@ -587,6 +591,38 @@ maint-rumdl-fix file:
 [group('maint')]
 maint-shellcheck-diff file:
     @'{{ helpers }}/maint.bash' shellcheck-diff "$1"
+
+# --- Debug (manual, on purpose) ---
+#
+# These wrap scripts in scripts/ that nothing calls automatically. That is
+# the normal state for a script: it exists to be picked up deliberately when
+# it is the right tool, not to be wired into a pipeline. The recipes exist so
+# `just menu` can surface them -- a script nobody can find is the actual
+# problem, not a script nobody calls.
+
+# Tail today's forge log with highlighting (needs FORGE_TRACKER=false to have
+# produced a file -- with tracking on, the writer is PostHog, not disk).
+[group('debug')]
+logs-follow:
+    ./scripts/debug-follow-log.bash
+
+# Run every `forge list --porcelain` variant and time it. Needs the debug binary.
+[group('debug')]
+list-porcelain: build
+    ./scripts/list-all-porcelain.sh
+
+# Manual e2e: prove a provider 400 surfaces its full response body.
+# Variadic, not two defaulted params: the script uses ${1:-default}, and an
+# empty positional is set, so defaulted params would defeat its own defaults.
+# NEEDS LIVE PROVIDER CREDENTIALS and talks to the network -- never in a gate.
+[group('debug')]
+test-400 *args:
+    ./scripts/test-400-error-message.sh "$@"
+
+# Amend the last commit without changing its message.
+[group('git')]
+amend:
+    git add -A && git commit --amend --no-edit
 
 # --- Inspect ---
 

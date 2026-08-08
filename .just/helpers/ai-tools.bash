@@ -2,10 +2,16 @@
 # ── ai-tools.bash — repo-local AI-coding tooling multiplexer ─────────────────
 #
 # One idempotent entrypoint for every code-intelligence index used in this
-# repo: gitnexus, codegraph, grepai, repowise. Safe to re-run: `init` only
+# repo: gitnexus, codegraph, grepai. Safe to re-run: `init` only
 # builds what is missing, `sync` updates incrementally, `resync` forces a full
-# rebuild. All indexing runs locally (no paid LLM calls, no network) — repowise
-# stays in --index-only mode and grepai uses the local ollama embedder.
+# rebuild. All indexing runs locally: no paid LLM calls and no network, with
+# grepai embedding through the local ollama model.
+#
+# repowise was dropped on 2026-08-08. Measured against the other three on this
+# repo it timed out at 32s returning an empty answer, its index was 11 days
+# behind HEAD, and every question it answered was answered faster by one of
+# them. The tool contract -- which of rg, grepai, codegraph, gitnexus and
+# ast-grep owns which question -- is in AGENTS.md.
 #
 # Usage:
 #   scripts/ai-tools.bash <command> [args]
@@ -23,7 +29,6 @@
 #   gitnexus  <init|sync|resync|status|clean|query|context|impact|trace|wiki|raw ...>
 #   codegraph <init|sync|resync|status|clean|query|explore|node|callers|callees|impact|raw ...>
 #   grepai    <init|sync|resync|status|clean|search|trace|raw ...>
-#   repowise  <init|sync|resync|status|clean|search|risk|health|raw ...>
 #
 # Env overrides:
 #   FORCE=1                 skip confirmation on clean
@@ -67,12 +72,11 @@ require() {
 }
 
 # The four indexers: name → binary, index dir.
-TOOLS=(gitnexus codegraph grepai repowise)
+TOOLS=(gitnexus codegraph grepai)
 declare -A TOOL_DIR=(
   [gitnexus]=.gitnexus
   [codegraph]=.codegraph
   [grepai]=.grepai
-  [repowise]=.repowise
 )
 
 index_present() { [[ -e "${TOOL_DIR[$1]}" ]]; }
@@ -119,23 +123,6 @@ grepai_resync() {
 }
 grepai_status() { require grepai; grepai status 2>&1 || warn "grepai index not ready — run: $0 grepai resync"; }
 grepai_clean()  { require grepai; grepai watch --stop >/dev/null 2>&1 || true; rm -rf .grepai && ok "grepai index removed"; }
-
-# ── repowise (index-only: AST + graph + git + dead-code, no LLM/network) ──────
-repowise_init() {
-  require repowise
-  local pages
-  pages=$(repowise status 2>/dev/null | rg -o 'Total pages[^0-9]*([0-9]+)' -r '$1' | head -1 || echo 0)
-  if index_present repowise && [[ "${pages:-0}" != "0" ]]; then
-    ok "repowise already has ${pages} pages"
-  else
-    log "repowise: index-only ingest…"
-    repowise init --index-only -y && ok "repowise ingested"
-  fi
-}
-repowise_sync()   { require repowise; log "repowise: index-only re-ingest…"; repowise init --index-only -y && ok "repowise synced"; }
-repowise_resync() { require repowise; log "repowise: force re-ingest…"; repowise init --index-only -y --force && ok "repowise re-indexed"; }
-repowise_status() { require repowise; repowise status; }
-repowise_clean()  { require repowise; repowise delete 2>/dev/null || rm -rf .repowise; ok "repowise data removed"; }
 
 # ── Global fan-out ────────────────────────────────────────────────────────────
 global_init()   { for t in "${TOOLS[@]}"; do if have "$t"; then "${t}_init";   else warn "$t not installed — skipped"; fi; done; }
@@ -205,7 +192,7 @@ case "$cmd" in
   search)            global_search "$@" ;;
   help|-h|--help)    usage 0 ;;
 
-  gitnexus|codegraph|grepai|repowise)
+  gitnexus|codegraph|grepai)
     tool="$cmd"; action="${1:-status}"; shift || true
     case "$action" in
       init)           "${tool}_init" ;;
