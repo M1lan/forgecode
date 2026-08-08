@@ -15,106 +15,22 @@
 #
 # Pure GNU Bash 5.3+. Colors: terminal defaults via tput only.
 
-# shellcheck source=lib.bash disable=SC2154,SC1091
-source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib.bash"
+# The tool catalogue -- tiers, install hints, presence probes -- lives in
+# tools.bash and is shared with every recipe that gates on a tool. doctor
+# reports it; `tools.bash need` enforces it. One list, two consumers.
+# tools.bash sources lib.bash, so JUST_REPO_DIR and the C_* colors arrive here
+# transitively.
+# shellcheck source=tools.bash disable=SC2154,SC1091
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/tools.bash"
 
 set -uo pipefail
 
-# --- dependency catalogue ---
-# Three tiers: REQUIRED (gate breaks without them), RECOMMENDED, OPTIONAL.
-REQUIRED=(bash just cargo rustc clippy rustfmt git rg fd jq)
-RECOMMENDED=(gum fzf bat figlet cargo-insta shellcheck rumdl)
-OPTIONAL=(cargo-nextest cargo-deny cargo-llvm-cov cargo-audit cargo-outdated
-  cargo-watch cargo-machete cargo-bloat betterhook
-  gitnexus codegraph grepai repowise ast-grep probe semgrep tokei)
+REQUIRED=("${TOOLS_REQUIRED[@]}")
+RECOMMENDED=("${TOOLS_RECOMMENDED[@]}")
+OPTIONAL=("${TOOLS_OPTIONAL[@]}")
 
-# brew formula when it differs from the command name
-declare -A PKG=(
-  [rg]=ripgrep
-)
-
-# install source (brew, rustup, cargo, or other -- see WHY hints)
-declare -A SRC=(
-  [bash]=brew [just]=brew [git]=brew [rg]=brew [fd]=brew [jq]=brew
-  [gum]=brew [fzf]=brew [bat]=brew [figlet]=brew
-  [shellcheck]=brew [rumdl]=brew ['ast-grep']=brew [semgrep]=brew [tokei]=brew
-  [cargo]=rustup [rustc]=rustup [clippy]=rustup [rustfmt]=rustup
-  ['cargo-nextest']=cargo ['cargo-deny']=cargo ['cargo-llvm-cov']=cargo
-  ['cargo-audit']=cargo ['cargo-outdated']=cargo ['cargo-watch']=cargo
-  ['cargo-machete']=cargo ['cargo-bloat']=cargo ['cargo-insta']=cargo
-  [betterhook]=cargo
-  [gitnexus]=other [codegraph]=other [grepai]=other [repowise]=other [probe]=other
-)
-
-install_cmd() {
-  local t="$1" src="${SRC[$1]:-brew}"
-  # rustfmt is required at the NIGHTLY toolchain specifically (fmt/fmt-check
-  # invoke it via `rustup run nightly`) -- `rustup component add rustfmt`
-  # alone targets the default toolchain and would not fix the real gap.
-  if [[ "$t" == rustfmt ]]; then
-    printf 'rustup toolchain install nightly && rustup component add rustfmt --toolchain nightly'
-    return
-  fi
-  case "$src" in
-    rustup) printf 'rustup component add %s' "$t" ;;
-    cargo) printf 'cargo install %s' "${PKG[$t]:-$t}" ;;
-    other) printf 'see: ./scripts/ai-tools.bash doctor' ;;
-    *) printf 'brew install %s' "${PKG[$t]:-$t}" ;;
-  esac
-}
-
-declare -A WHY=(
-  [bash]='helper runtime (GNU >= 5.3)'
-  [just]='the task runner'
-  [cargo]='build & test (Cargo workspace)'
-  [rustc]='Rust compiler'
-  [clippy]='lint gate (-D warnings)'
-  [rustfmt]='format gate (nightly)'
-  [git]='version control'
-  [rg]='search (never grep)'
-  [fd]='file finder (never find)'
-  [jq]='just --dump JSON parsing (menu, this doctor)'
-  [gum]='TUI: splash panels + menu parameter forms'
-  [fzf]='TUI: menu list engine'
-  [bat]='syntax-highlighted recipe previews'
-  [figlet]='banner art on the splash'
-  ['cargo-insta']='snapshot test runner (just test)'
-  [shellcheck]='lint .just/helpers/ + scripts/*.bash'
-  [rumdl]='markdown linting (just rumdl)'
-  ['cargo-nextest']='fast parallel test runner (just test-nextest)'
-  ['cargo-deny']='license + advisory audit (just deny)'
-  ['cargo-llvm-cov']='coverage reports (just coverage)'
-  ['cargo-audit']='security advisory scan (just audit)'
-  ['cargo-outdated']='outdated dep report (just outdated)'
-  ['cargo-watch']='live rebuild loop (just watch)'
-  ['cargo-machete']='unused dependency check (just machete)'
-  ['cargo-bloat']='binary size breakdown (just bloat)'
-  [betterhook]='git hooks manager (just hooks)'
-  [gitnexus]='AI code graph (just gitnexus)'
-  [codegraph]='AI code graph (just codegraph)'
-  [grepai]='AI semantic search (just grepai)'
-  [repowise]='AI defect-risk wiki (just repowise)'
-  ['ast-grep']='structural code search'
-  [probe]='ranked token-budgeted code search'
-  [semgrep]='pattern-based security scan'
-  [tokei]='LOC / language stats (just loc)'
-)
-
-# --- check helpers ---
-# clippy is invoked as `cargo clippy`; its binary is `cargo-clippy`, there is
-# no `clippy` on PATH -- probe the real binary instead. rustfmt must be
-# available on the NIGHTLY toolchain specifically (fmt/fmt-check run it via
-# `rustup run nightly`) -- a stable-only rustfmt on PATH is not enough.
-declare -A PROBE=(
-  [clippy]=cargo-clippy
-)
-tool_present() {
-  case "$1" in
-    rustfmt) rustup run nightly rustfmt --version > /dev/null 2>&1 ;;
-    *) has "${PROBE[$1]:-$1}" ;;
-  esac
-}
-is_missing() { ! tool_present "$1"; }
+install_cmd() { tool_hint "$1"; }
+is_missing() { tool_missing "$1"; }
 
 check_tier() { # <tier_name> <tool...>
   local tier="$1" t missing=() present=()
@@ -126,9 +42,9 @@ check_tier() { # <tier_name> <tool...>
   printf ' (%d/%d)\n' "${#present[@]}" "$#"
   for t in "$@"; do
     if tool_present "$t"; then
-      printf '  %s%-16s%s %s -- %s\n' "$C_GREEN" "$t" "$C_RESET" "ok" "${WHY[$t]:-}"
+      printf '  %s%-16s%s %s -- %s\n' "$C_GREEN" "$t" "$C_RESET" "ok" "${TOOLS_WHY[$t]:-}"
     else
-      printf '  %s%-16s%s %s -- %s\n' "$C_RED" "$t" "$C_RESET" "MISSING" "${WHY[$t]:-}"
+      printf '  %s%-16s%s %s -- %s\n' "$C_RED" "$t" "$C_RESET" "MISSING" "${TOOLS_WHY[$t]:-}"
       printf '        hint: %s\n' "$(install_cmd "$t")"
     fi
   done
