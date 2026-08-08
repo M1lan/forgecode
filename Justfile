@@ -486,12 +486,23 @@ schema:
 schema-check:
     CI=1 cargo test -p forge_config --test schema
 
-# Those YAML files are GENERATED (see their header). Hand-editing them is
-# lost on the next `just test`, because forge_ci's "test" writes them.
+# .github/workflows/ IS NO LONGER GENERATED ON THIS FORK.
+#
+# It was: crates/forge_ci/tests/ci.rs wrote seven YAML files as a test side
+# effect, so `cargo test` rewrote tracked files and reverted any hand edit.
+# Six of the seven were upstream's release and bot machinery -- npm and
+# homebrew publishing this fork cannot do, plus an hourly stale bot and a
+# daily bounty job that trigger on schedules rather than on a branch, so the
+# `branches: [main]` filter did not hold them back.
+#
+# Now there is one hand-written minimal workflow that this fork owns, and
+# forge_ci's test guards it instead of generating it. This recipe runs that
+# guard: it checks ci.yml still carries its fork-owned header, that the six
+# upstream workflows have not come back, and that CI never invokes `just`.
 
-# Regenerate .github/workflows/*.yml from crates/forge_ci.
+# Verify .github/workflows is still the fork's own minimal CI.
 [group('codegen')]
-workflows:
+workflows-check:
     cargo test -p forge_ci --test ci
 
 # --- Database (diesel: schema authoring only) ---

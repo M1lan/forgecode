@@ -5,7 +5,26 @@ resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
-rust-version = "1.94"
+# FORK PATCH (mymain, 2026-08-09): was "1.94", which was not true.
+#
+# Measured, not assumed: `cargo +1.94.1 check --workspace` fails at
+#   error[E0658]: use of unstable library feature `cfg_select`
+#   error: could not compile `libsqlite3-sys` (build script)
+# so the workspace has not built on 1.94 for as long as that lockfile has
+# been in place. Nothing verified the claim -- no CI job and no local recipe
+# built against it -- so it drifted silently.
+#
+# Set to the toolchain that is actually pinned and actually tested
+# (rust-toolchain.toml `channel = "1.97"`). For an application with a pinned
+# toolchain that is the honest value: the supported version and the built
+# version are the same thing, and a lower number nobody exercises is a
+# promise waiting to break. This workspace publishes nothing to crates.io,
+# so no downstream consumer reads this field.
+#
+# `just msrv` (cargo-msrv) now verifies it instead of trusting it.
+# On upstream merge: if upstream bumps this line, keep whichever value is
+# higher and re-run `just msrv`.
+rust-version = "1.97"
 edition = "2024"
 
 [profile.release]
