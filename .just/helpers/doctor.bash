@@ -121,7 +121,7 @@ if [[ "${1:-}" == "--factoid" ]]; then
   elif [[ ! -x "$JUST_REPO_DIR/target/release/$PKGNAME" ]]; then
     printf 'no release build -- just install-release'
   else
-    printf 'all green -- just verify before pushing'
+    printf 'all green -- just ci before pushing'
   fi
   exit 0
 fi

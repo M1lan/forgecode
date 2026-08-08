@@ -76,26 +76,22 @@ concurrent_safe = true
 [hooks.pre-push]
 parallel = true
 fail_fast = false
-priority = ["fmt-check", "clippy", "test"]
+priority = ["gate"]
 
-[hooks.pre-push.jobs.fmt-check]
-run = """bash -c 'PATH="$(rustup run nightly rustc --print sysroot)/bin:$PATH" \
-  cargo fmt --all -- --check'"""
-glob = ["*.rs", "rustfmt.toml", ".rustfmt.toml"]
-isolate = { tool = "cargo", target_dir = "per-worktree" }
-timeout = "2m"
-
-[hooks.pre-push.jobs.clippy]
-run = "cargo clippy --workspace --all-targets -- -D warnings"
-glob = ["*.rs", "Cargo.toml", "Cargo.lock"]
-isolate = { tool = "cargo", target_dir = "per-worktree" }
-timeout = "10m"
-
-# matches `just test`: insta when present, plain cargo test otherwise.
-[hooks.pre-push.jobs.test]
-run = """bash -c 'if command -v cargo-insta >/dev/null 2>&1; then \
-  cargo insta test --accept --workspace; else \
-  cargo test --workspace --quiet; fi'"""
-glob = ["*.rs", "Cargo.toml", "Cargo.lock"]
+# One job, because there is one gate: `just ci-check`.
+#
+# This lane used to be three jobs (fmt-check, clippy, test) that each
+# re-implemented a Justfile recipe. The test one ran `cargo insta test
+# --accept`, which WRITES: two of this workspace's four tests/ dirs are
+# generators, so a pre-push hook could rewrite .github/workflows/*.yml and
+# forge.schema.json underneath the push, and auto-accept every drifted
+# snapshot on the way. --check is the read-only form and cannot.
+#
+# Note it is `ci-check`, not `ci`. `just ci` repairs before it judges, and a
+# hook that edits the tree mid-push is a trap. If ci-check fails here, run
+# `just ci` by hand, look at what it fixed, and commit that.
+[hooks.pre-push.jobs.gate]
+run = "just ci-check"
+glob = ["*.rs", "Cargo.toml", "Cargo.lock", "*.bash", "*.sh", "*.zsh", "Justfile", ".just/**"]
 isolate = { tool = "cargo", target_dir = "per-worktree" }
 timeout = "20m"

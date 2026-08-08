@@ -98,9 +98,17 @@ betterhook's git hooks call the same recipes, so a gate that passes locally
 passes in the hook by construction. Full recipe reference: `docs/justfile.md`
 (generated — run `just docs` after changing a recipe, `just docs-check` gates it).
 
+**There is one gate: `just ci`.** It repairs before it judges — rustfmt,
+`clippy --fix`, typos, rumdl and the generated docs all run first, then the
+same tools run again in check mode. A lint that a tool can fix is not
+something to report at a human.
+
 1. `just check` — type-check the workspace. Fastest.
-2. `just test-check` — read-only test run. Fails on snapshot drift.
-3. `just verify` — the full pre-push gate.
+2. `just ci` — fix everything fixable, then prove the tree. **Use this.**
+3. `just ci-check` — the same gate, read-only. What the pre-push hook runs.
+
+`just ci` can modify files. That is the point; review and commit them.
+`just ci-check` never writes.
 
 **`just test` rewrites files.** Two of the four `tests/` dirs are generators:
 `crates/forge_ci/tests/ci.rs` writes every `.github/workflows/*.yml`, and
@@ -322,6 +330,7 @@ Operator note, 2026-06-15. Relevant here because `forge-zsh` lives in
 Respond terse like smart caveman. All technical substance stay. Only fluff die.
 
 Rules:
+
 - Drop: articles (a/an/the), filler (just/really/basically), pleasantries, hedging
 - Fragments OK. Short synonyms. Technical terms exact. Code unchanged.
 - Pattern: [thing] [action] [reason]. [next step].
@@ -336,13 +345,13 @@ Auto-Clarity: drop caveman for security warnings, irreversible actions, user con
 Boundaries: code/commits/PRs written normal.
 
 <!-- gitnexus:start -->
-# GitNexus — Code Intelligence
+## GitNexus — Code Intelligence
 
 This project is indexed by GitNexus as **forgecode** (14157 symbols, 33288 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 
-## Always Do
+### Always Do
 
 - **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
 - **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, compare against the default branch: `detect_changes({scope: "compare", base_ref: "mymain"})`.
@@ -351,14 +360,14 @@ This project is indexed by GitNexus as **forgecode** (14157 symbols, 33288 relat
 - When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
 - For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
 
-## Never Do
+### Never Do
 
 - NEVER edit a function, class, or method without first running `impact` on it.
 - NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
 - NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
 - NEVER commit changes without running `detect_changes()` to check affected scope.
 
-## Resources
+### Resources
 
 | Resource | Use for |
 |----------|---------|
@@ -367,7 +376,7 @@ This project is indexed by GitNexus as **forgecode** (14157 symbols, 33288 relat
 | `gitnexus://repo/forgecode/processes` | All execution flows |
 | `gitnexus://repo/forgecode/process/{name}` | Step-by-step execution trace |
 
-## CLI
+### CLI
 
 | Task | Read this skill file |
 |------|---------------------|

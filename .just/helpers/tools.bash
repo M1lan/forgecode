@@ -9,7 +9,7 @@
 #
 # WHY THIS FILE EXISTS
 # Recipes used to inline `if command -v X; then …; else printf 'X not
-# installed' >&2; fi`, nineteen times. That construct EXITS 0. `just verify`
+# installed' >&2; fi`, nineteen times. That construct EXITS 0. The aggregate gates
 # and `just ci` therefore reported success on a machine with no shellcheck,
 # no cargo-insta and no clippy extras -- gates that had linted and tested
 # nothing. `need` replaces all nineteen: absent tool -> non-zero, with the

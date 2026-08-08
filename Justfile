@@ -1,6 +1,6 @@
 # --- ForgeCode Justfile -- the SDLC of this Rust workspace, and nothing else. ---
 #
-# Scope: build, run, test, lint, verify, install, sync with upstream, clean.
+# Scope: build, run, test, lint, gate, install, sync with upstream, clean.
 # Everything interactive or multi-step lives in .just/helpers/.
 #
 #   bare `just`   info splash -> menu
@@ -15,7 +15,7 @@
 # 1. NO SILENT SKIPS. A recipe whose tool is missing exits non-zero via
 #    `tools.bash need`, printing the install command. The previous version
 #    had nineteen `if command -v X; then …; else printf 'not installed'; fi`
-#    blocks, all exiting 0 -- so `just verify` and `just ci` could pass
+#    blocks, all exiting 0 -- so `just verify` and `just ci` could both pass
 #    having linted and tested nothing at all.
 #
 # 2. ARGUMENTS ARE ARGUMENTS. Variadic recipes use "$@", not {{ args }}.
@@ -106,7 +106,7 @@ doctor:
 docs:
     @'{{ helpers }}/docs.bash' --write
 
-# fail if docs/justfile.md has drifted from this file; part of `verify`
+# fail if docs/justfile.md has drifted from this file; part of `just ci`
 [group('meta')]
 docs-check:
     @'{{ helpers }}/docs.bash' --check
@@ -302,28 +302,44 @@ typos:
 
 # Everything that only reads: format check, clippy, shell, markdown, spelling.
 [group('lint')]
-lint: fmt-check clippy shellcheck rumdl typos
+lint: fmt-check clippy clippy-strict shellcheck rumdl typos
 
-# Everything that writes: format, clippy fixes, typo fixes.
+# Everything that writes: format, clippy fixes.
 [group('lint')]
 fix: fmt clippy-fix
 
-# --- Verify ---
+# --- The gate ---
 
-# Full pre-push gate. Every step fails loud; none can skip silently.
-[group('verify')]
-verify: fmt-check clippy shellcheck test-shell test-check docs-check
+# THERE IS ONE GATE AND IT IS `just ci`.
+#
+# `verify` used to exist alongside it with a different, overlapping step
+# list, so whether the tree "passed" depended on which of the two you ran.
+# It is gone. `ci` is the answer to "is this good to push?".
+#
+# It repairs before it judges: rustfmt, `clippy --fix`, typos, rumdl and the
+# generated docs all run in a fix phase first, and only then does the same
+# set of tools run again in check mode. Printing "run cargo fmt" at a human
+# who has a formatter installed is a waste of both of them.
+#
+# `just ci-check` is the read-only form, for hooks and for confirming a tree
+# you do not want touched.
 
-# Fast gate for a commit loop.
-[group('verify')]
+# Fix everything fixable, then prove the tree. The one gate.
+[group('gate')]
+ci:
+    @'{{ helpers }}/ci.bash'
+
+# The same gate, read-only: writes nothing, just reports.
+[group('gate')]
+ci-check:
+    @'{{ helpers }}/ci.bash' --check
+
+# Fast subset for a tight commit loop -- not a substitute for `just ci`.
+[group('gate')]
 pre-push: fmt-check check clippy
 
-# What GitHub actually gates on, reproduced locally (coverage + benchmark).
-[group('verify')]
-ci: check lint test-check coverage bench-rprompt
-
 # Fail if any source file changed during a build/test run.
-[group('verify')]
+[group('gate')]
 verify-clean-tree:
     @'{{ helpers }}/clean.bash' assert-clean
 
