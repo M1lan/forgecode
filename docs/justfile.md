@@ -12,6 +12,12 @@ Machine-readable form: `just --dump --dump-format json`.
 |---|---|---|
 | `ai` | args | Local code-intelligence indexes: ai status\\|init\\|sync\\|search\\|<tool> ... |
 
+## git
+
+| recipe | arguments | what it does |
+|---|---|---|
+| `amend` | – | Amend the last commit without changing its message. |
+
 ## verify
 
 | recipe | arguments | what it does |
@@ -74,6 +80,7 @@ Machine-readable form: `just --dump --dump-format json`.
 | `clean-report` | – | Show what each cleanable location costs, in bytes on disk. Read-only. |
 | `clean-stale` | – | Drop incremental-compilation caches and stale profile dirs, keep the rest. |
 | `clean` | – | cargo clean: removes target/ entirely. |
+| `rebuild` | – | Remove all build artifacts, then rebuild the forge binary from scratch. |
 
 ## lint
 
@@ -140,6 +147,14 @@ Machine-readable form: `just --dump --dump-format json`.
 | `reinstall-both` | – | Rebuild from scratch and reinstall both binaries. |
 | `reinstall` | – | Rebuild from scratch and reinstall the release binary. |
 
+## debug
+
+| recipe | arguments | what it does |
+|---|---|---|
+| `list-porcelain` | – | Run every `forge list --porcelain` variant and time it. Needs the debug binary. |
+| `logs-follow` | – | produced a file -- with tracking on, the writer is PostHog, not disk). |
+| `test-400` | args | NEEDS LIVE PROVIDER CREDENTIALS and talks to the network -- never in a gate. |
+
 ## maint
 
 | recipe | arguments | what it does |
@@ -188,7 +203,9 @@ eval <- node-install
 fix <- fmt, clippy-fix
 install-both <- install, install-debug
 lint <- fmt-check, clippy, clippy-strict, shellcheck, rumdl, typos
+list-porcelain <- build
 pre-push <- fmt-check, check, clippy
+rebuild <- clean, build
 reinstall <- clean, install
 reinstall-both <- clean, install-both
 test-zsh <- build
