@@ -15,6 +15,14 @@ version = 1
 parallel = true
 fail_fast = false
 priority = ["gitleaks", "rustfmt", "shellcheck"]
+# stash_untracked MUST stay false: betterhook stashes to isolate the staged
+# tree, and `git stash` during a conflicted merge clears .git/MERGE_HEAD.
+# Popping does not restore it, so the commit then dies with
+# "fatal: could not open '.git/MERGE_HEAD'" and the merge lineage is lost.
+# Verified 2026-08-08 merging agent-maint-justfile into mymain: all four
+# pre-commit lanes passed, then the commit aborted. pre-push already
+# defaults this to false for the same class of reason.
+stash_untracked = false
 
 # Secrets never land. Fast scan, staged diff only.
 [hooks.pre-commit.jobs.gitleaks]
