@@ -1,0 +1,6 @@
+ruleDirs:
+- /Users/milan.santosi/mysrc/forgecode/rules
+testConfigs:
+- testDir: /Users/milan.santosi/mysrc/forgecode/rule-tests
+utilDirs:
+- /Users/milan.santosi/mysrc/forgecode/utils
