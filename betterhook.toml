@@ -14,7 +14,7 @@ version = 1
 [hooks.pre-commit]
 parallel = true
 fail_fast = false
-priority = ["gitleaks", "rustfmt", "shellcheck"]
+priority = ["gitleaks", "rustfmt", "shellcheck", "shell-parse"]
 # stash_untracked MUST stay false: betterhook stashes to isolate the staged
 # tree, and `git stash` during a conflicted merge clears .git/MERGE_HEAD.
 # Popping does not restore it, so the commit then dies with
@@ -24,7 +24,19 @@ priority = ["gitleaks", "rustfmt", "shellcheck"]
 # defaults this to false for the same class of reason.
 stash_untracked = false
 
-# Secrets never land. Fast scan, staged diff only.
+# EVERY JOB BELOW CALLS A `just` RECIPE. That is deliberate.
+#
+# These lanes used to re-implement the Justfile inline: the same nightly
+# rustfmt PATH dance, the same two shellcheck invocations with the same
+# exclude list, the same insta-or-cargo-test fallback. Two copies of one
+# policy, free to drift — and they had already drifted, because the hook's
+# test lane reproduced the Justfile's silent `cargo test` fallback bug.
+#
+# The Justfile is now the single source of truth. A gate that passes here
+# passes locally, by construction, because it is literally the same command.
+
+# Secrets never land. Fast scan, staged diff only. Stays a builtin: it reads
+# the staged diff directly, which no just recipe can do.
 [hooks.pre-commit.jobs.gitleaks]
 builtin = "gitleaks"
 
@@ -33,33 +45,31 @@ builtin = "gitleaks"
 # mis-evaluates (false drift). Verified 2026-07-30: stable flags
 # crates/forge_main/src/info.rs:75, nightly fmt-check exit 0 on the same tree.
 # builtin = "rustfmt" is the stable channel — do not use it here.
+# `just fmt-check` owns that nightly resolution.
 [hooks.pre-commit.jobs.rustfmt]
-run = """bash -c 'PATH="$(rustup run nightly rustc --print sysroot)/bin:$PATH" \
-  cargo fmt --all -- --check'"""
+run = "just fmt-check"
 glob = ["*.rs", ".rustfmt.toml", "rustfmt.toml"]
 isolate = { tool = "cargo", target_dir = "per-worktree" }
 timeout = "2m"
 
-# Bash surface lane 1: whole tree at -S error. Upstream shell files carry
-# pre-existing warning-severity findings (SC2034/2155/2206/2178, verified
-# 2026-07-30); gating on warnings would block every commit until a dedicated
-# cleanup pass — operator decision, not hook policy.
+# Shell lint, both lanes, via .just/helpers/lint-shell.bash:
+#   helpers at -S warning, whole tracked tree at -S error, plus the POSIX
+#   installer. The severity split and the SC exclude list live in that
+#   helper now, with the reasoning attached.
 [hooks.pre-commit.jobs.shellcheck]
-# exclude list: SC1071 (shellcheck dialect gaps), SC1008/2096/2239/1115 (forge
-# setup-managed block files start with a '# !!' marker, not a shebang;
-# shellcheck misreads it — upstream-owned, not ours to reformat).
-run = "git ls-files -z -- '*.bash' '*.sh' | gxargs -0 -r shellcheck -x -S error --source-path=SCRIPTDIR --exclude=SC1071,SC1008,SC2096,SC2239,SC1115"
-glob = ["*.bash", "*.sh"]
-reads = ["**/*.bash", "**/*.sh"]
+run = "just shellcheck"
+glob = ["*.bash", "*.sh", "cli"]
+reads = ["**/*.bash", "**/*.sh", ".just/**"]
 writes = []
 concurrent_safe = true
 
-# Bash surface lane 2: .just helpers (this repo's own harness) at -S warning.
-# New/changed helper code must be warning-clean to land.
-[hooks.pre-commit.jobs.shellcheck-helpers]
-run = "git ls-files -z -- '.just/helpers/*.bash' | gxargs -0 -r shellcheck -x -S warning -P .just/helpers"
-glob = [".just/helpers/**"]
-reads = [".just/**"]
+# Parse-check the shell files that get compiled INTO the binary. A syntax
+# error in shell-plugin/**/*.zsh is invisible to cargo and only fails at the
+# user's shell startup, so it must not reach a commit.
+[hooks.pre-commit.jobs.shell-parse]
+run = "just test-shell"
+glob = ["shell-plugin/**", ".just/helpers/**", "cli"]
+reads = ["shell-plugin/**", ".just/**"]
 writes = []
 concurrent_safe = true
 
