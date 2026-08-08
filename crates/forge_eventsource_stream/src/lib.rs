@@ -20,7 +20,7 @@
 //!             event.event,
 //!             event.data
 //!         ),
-//!         Err(e) => eprintln!("error occured: {}", e),
+//!         Err(e) => eprintln!("error occurred: {}", e),
 //!     }
 //! }
 //! ```

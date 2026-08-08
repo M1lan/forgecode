@@ -1,0 +1,23 @@
+# typos CLI config -- suppress deliberate test fixtures and artifacts.
+# Evidence (2026-07-24): `celar` is an intentional unknown-command fixture
+# (crates/forge_main/src/model.rs:1513-1524); `hda`/`connec`/`ned` are
+# truncated streaming-chunk fixtures in openai_responses tests; `tru` is
+# the fixture "su[tru]aua" (crates/forge_domain/src/compact/strategy.rs:297);
+# `mis` matches "mis-tagged" and the ANSI escape `\033[90m` + "is";
+# `ba` matches git SHAs in docs; `ratatui` is a crate name.
+
+[default.extend-words]
+celar = "celar"
+hda = "hda"
+connec = "connec"
+ned = "ned"
+tru = "tru"
+mis = "mis"
+ba = "ba"
+ratatui = "ratatui"
+
+[files]
+extend-exclude = [
+    "crates/forge_app/src/fixtures/*.json",
+    "*.snap",
+]
