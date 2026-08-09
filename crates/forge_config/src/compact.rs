@@ -13,8 +13,8 @@ use crate::Percentage;
 pub enum UpdateFrequency {
     Daily,
     Weekly,
-    Never,
     #[default]
+    Never,
     Always,
 }
 
