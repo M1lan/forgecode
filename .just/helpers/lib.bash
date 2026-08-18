@@ -111,16 +111,6 @@ suggest_values() {
   esac
 }
 
-recommended_args() {
-  local recipe=$1
-
-  case $recipe in
-    test | test-crate | test-nextest)
-      printf '%s\n' '--all-features'
-      ;;
-  esac
-}
-
 preview_recipe() {
   local recipe=$1
   local source
