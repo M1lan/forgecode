@@ -22,12 +22,12 @@ Machine-readable form: `just --dump --dump-format json`.
 
 | recipe | arguments | what it does |
 |---|---|---|
-| `audit-brief` | – | One line per advisory: ID pkg@version fixed-in title. |
 | `audit` | – | Known Rust security advisories. |
+| `audit-brief` | – | One line per advisory: ID pkg@version fixed-in title. |
 | `deny` | – | Licenses, bans and advisories. |
+| `hooks` | – | betterhook status. |
 | `hooks-plan` | – | Dry-run the pre-commit job plan. |
 | `hooks-run` | – | Run the pre-commit jobs now. |
-| `hooks` | – | betterhook status. |
 | `machete` | – | Unused dependencies (false positives on macro-only deps are expected). |
 | `msrv` | – | Verify Cargo.toml's rust-version claim is true (it claims 1.94; the pin is 1.97). |
 
@@ -35,10 +35,10 @@ Machine-readable form: `just --dump --dump-format json`.
 
 | recipe | arguments | what it does |
 |---|---|---|
-| `bench-rprompt` | – | The zsh rprompt latency gate CI runs. Needs the debug binary. |
 | `bench` | args | Arbitrary benchmark arguments. Needs the debug binary. |
-| `coverage-html` | – | HTML report, opened in a browser. |
+| `bench-rprompt` | – | The zsh rprompt latency gate CI runs. Needs the debug binary. |
 | `coverage` | – | LCOV report, same invocation as the GitHub build job. |
+| `coverage-html` | – | HTML report, opened in a browser. |
 
 ## inspect
 
@@ -46,8 +46,8 @@ Machine-readable form: `just --dump --dump-format json`.
 |---|---|---|
 | `bloat` | – | What takes up space in the release binary. |
 | `crates` | – | Workspace package names, from cargo metadata (not a directory listing). |
-| `deps-crate` | crate depth=2 | Dependency tree for one crate. |
 | `deps` | – | Direct dependencies of every workspace member. |
+| `deps-crate` | crate depth=2 | Dependency tree for one crate. |
 | `loc` | – | Rust line counts. |
 | `log` | – | Recent commit graph. |
 | `outdated` | – | Dependencies with newer versions available. |
@@ -56,18 +56,18 @@ Machine-readable form: `just --dump --dump-format json`.
 
 | recipe | arguments | what it does |
 |---|---|---|
+| `build` | – | Build the forge binary (debug). One crate, not all 25. |
 | `build-crate` | crate | Build one crate by name. |
 | `build-release` | – | Build the forge binary with the release profile (lto, codegen-units=1: slow). |
 | `build-workspace` | – | Build the entire workspace (debug) -- only needed before a full test run. |
-| `build` | – | Build the forge binary (debug). One crate, not all 25. |
 | `check` | – | Type-check the whole workspace including tests and benches. Fastest gate. |
 
 ## gate
 
 | recipe | arguments | what it does |
 |---|---|---|
-| `ci-check` | – | The same gate, read-only: writes nothing, just reports. |
 | `ci` | – | Fix everything fixable, then prove the tree. The one gate. |
+| `ci-check` | – | The same gate, read-only: writes nothing, just reports. |
 | `pre-push` | – | Fast subset for a tight commit loop -- not a substitute for `just ci`. |
 | `verify-clean-tree` | – | Fail if any source file changed during a build/test run. |
 
@@ -75,23 +75,23 @@ Machine-readable form: `just --dump --dump-format json`.
 
 | recipe | arguments | what it does |
 |---|---|---|
+| `clean` | – | cargo clean: removes target/ entirely. |
 | `clean-all` | – | Everything repo-local: target, indexes, node_modules, sandbox. Asks first. |
 | `clean-indexes` | – | Move the local AI index dirs to Trash (recoverable). Asks first. |
 | `clean-report` | – | Show what each cleanable location costs, in bytes on disk. Read-only. |
 | `clean-stale` | – | Drop incremental-compilation caches and stale profile dirs, keep the rest. |
-| `clean` | – | cargo clean: removes target/ entirely. |
 | `rebuild` | – | Remove all build artifacts, then rebuild the forge binary from scratch. |
 
 ## lint
 
 | recipe | arguments | what it does |
 |---|---|---|
+| `clippy` | – | Clippy, warnings denied. Matches what CI's autofix lane compiles. |
 | `clippy-fix` | – | Apply clippy's machine-applicable fixes. |
 | `clippy-strict` | – | The string-safety lane CI runs and this Justfile never did. |
-| `clippy` | – | Clippy, warnings denied. Matches what CI's autofix lane compiles. |
 | `fix` | – | Everything that writes: format, clippy fixes. |
-| `fmt-check` | – | Verify formatting without writing. |
 | `fmt` | – | Format Rust with the NIGHTLY rustfmt (.rustfmt.toml uses unstable options). |
+| `fmt-check` | – | Verify formatting without writing. |
 | `lint` | – | Everything that only reads: format check, clippy, shell, markdown, spelling. |
 | `rumdl` | – | Markdown lint. |
 | `shellcheck` | – | Shell lint over the Justfile system + the POSIX installer. Blocking. |
@@ -116,8 +116,8 @@ Machine-readable form: `just --dump --dump-format json`.
 
 | recipe | arguments | what it does |
 |---|---|---|
-| `docs-check` | – | fail if docs/justfile.md has drifted from this file; part of `just ci` |
 | `docs` | – | regenerate docs/justfile.md from this file (never hand-edit that file) |
+| `docs-check` | – | fail if docs/justfile.md has drifted from this file; part of `just ci` |
 | `doctor` | – | what is installed, what is missing, and the exact command to fix it |
 | `help` | – | machine/agent recipe list (parse `just --dump --dump-format json` when scripting) |
 | `info` | – | project+tool status screen (no countdown; splash variant) |
@@ -129,23 +129,23 @@ Machine-readable form: `just --dump --dump-format json`.
 |---|---|---|
 | `eval` | args | TypeScript LLM eval suite. pnpm, never npm. |
 | `node-install` | – | Install the TypeScript toolchain for the eval suite. |
+| `test` | args | Workspace tests. insta drives nextest and ACCEPTS snapshots (writes files). |
 | `test-check` | args | Read-only test run: fails on snapshot drift instead of accepting it. |
 | `test-crate` | crate args | Tests for one crate. |
 | `test-one` | pattern args | Tests matching a name filter. |
 | `test-shell` | – | Parse-check every shell file this repo embeds into the binary or ships. |
 | `test-zsh` | – | The zsh format/rprompt CLI tests (needs the debug binary). |
-| `test` | args | Workspace tests. insta drives nextest and ACCEPTS snapshots (writes files). |
 
 ## install
 
 | recipe | arguments | what it does |
 |---|---|---|
+| `install` | – | Build and install the release binary to the fixed {{ cargo_bin_dir }}/{{ bin }}. |
 | `install-audit` | – | Enumerate PATH shadows for {{ bin }}; fails when the winner is not canonical. |
 | `install-both` | – | Install both binaries. |
 | `install-debug` | – | Build and install the debug binary as {{ bin }}-debug. |
-| `install` | – | Build and install the release binary to the fixed {{ cargo_bin_dir }}/{{ bin }}. |
-| `reinstall-both` | – | Rebuild from scratch and reinstall both binaries. |
 | `reinstall` | – | Rebuild from scratch and reinstall the release binary. |
+| `reinstall-both` | – | Rebuild from scratch and reinstall both binaries. |
 
 ## debug
 
@@ -169,19 +169,19 @@ Machine-readable form: `just --dump --dump-format json`.
 
 | recipe | arguments | what it does |
 |---|---|---|
+| `run` | args | Run the freshly built forge against an isolated state dir (see `sandbox`). |
 | `run-live` | args | Run against your REAL ~/forge state. Mutates live agents, skills and DB. |
 | `run-sandbox-reset` | – | Delete the run sandbox state dir. |
-| `run` | args | Run the freshly built forge against an isolated state dir (see `sandbox`). |
+| `watch` | – | Type-check on every save. |
 | `watch-crate` | crate | Watch one crate's tests. |
 | `watch-test` | – | Run the test suite on every save. |
-| `watch` | – | Type-check on every save. |
 
 ## codegen
 
 | recipe | arguments | what it does |
 |---|---|---|
-| `schema-check` | – | Assert forge.schema.json is current without rewriting it. |
 | `schema` | – | Regenerate forge.schema.json (via the forge_config schema test). |
+| `schema-check` | – | Assert forge.schema.json is current without rewriting it. |
 | `workflows-check` | – | Verify .github/workflows is still the fork's own minimal CI. |
 
 ## upstream
