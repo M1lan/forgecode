@@ -46,6 +46,7 @@ builtin = "gitleaks"
 [hooks.pre-commit.jobs.docs]
 run = "just docs"
 glob = ["Justfile", ".just/helpers/docs.bash"]
+env = { LC_ALL = "C" }
 reads = ["Justfile", ".just/helpers/docs.bash"]
 writes = ["docs/justfile.md"]
 stage_fixed = true
