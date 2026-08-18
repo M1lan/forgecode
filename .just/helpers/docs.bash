@@ -64,7 +64,7 @@ render() {
           ((.value.doc // "") | split("\n") | .[0] | gsub("\\|"; "\\\\|"))
         ]
       | join("\u001f")
-    ' | sort | while IFS=$'\x1f' read -r name params doc; do
+    ' | LC_ALL=C sort | while IFS=$'\x1f' read -r name params doc; do
       printf '| `%s` | %s | %s |\n' "$name" "${params:-–}" "${doc:-–}"
     done
     printf '\n'
@@ -78,7 +78,7 @@ render() {
     | to_entries[]
     | select(.value.dependencies | length > 0)
     | .key + " <- " + ([.value.dependencies[].recipe] | join(", "))
-  ' | sort
+  ' | LC_ALL=C sort
   printf '```\n'
 }
 
