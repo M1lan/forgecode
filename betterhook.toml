@@ -14,7 +14,7 @@ version = 1
 [hooks.pre-commit]
 parallel = true
 fail_fast = false
-priority = ["gitleaks", "rustfmt", "shellcheck", "shell-parse"]
+priority = ["gitleaks", "docs", "rustfmt", "shellcheck", "shell-parse"]
 # stash_untracked MUST stay false: betterhook stashes to isolate the staged
 # tree, and `git stash` during a conflicted merge clears .git/MERGE_HEAD.
 # Popping does not restore it, so the commit then dies with
@@ -39,6 +39,17 @@ stash_untracked = false
 # the staged diff directly, which no just recipe can do.
 [hooks.pre-commit.jobs.gitleaks]
 builtin = "gitleaks"
+
+# Generated command docs are mechanical output. Regenerate and re-stage them
+# while committing their source, before the read-only pre-push gate runs.
+# This keeps `docs current` from turning a push into a repair instruction.
+[hooks.pre-commit.jobs.docs]
+run = "just docs"
+glob = ["Justfile", ".just/helpers/docs.bash"]
+reads = ["Justfile", ".just/helpers/docs.bash"]
+writes = ["docs/justfile.md"]
+stage_fixed = true
+concurrent_safe = true
 
 # rustfmt must run the NIGHTLY sysroot — .rustfmt.toml uses unstable features
 # (wrap_comments, imports_granularity, …) that stable rustfmt silently
@@ -78,7 +89,9 @@ parallel = true
 fail_fast = false
 priority = ["gate"]
 
-# One job, because there is one gate: `just ci-check`.
+# One read-only job, because there is one gate: `just ci-check`.
+# Auto-fixable generated docs are repaired and staged by the pre-commit docs
+# job, where they can still become part of the commit being pushed.
 #
 # This lane used to be three jobs (fmt-check, clippy, test) that each
 # re-implemented a Justfile recipe. The test one ran `cargo insta test
