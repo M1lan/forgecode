@@ -11,6 +11,9 @@
 # The deny rules come first because Deny always wins over Allow: without them
 # the write allow-all would let an agent grant itself command permissions by
 # editing permissions.yaml or setting `restricted = false` in .forge.toml.
+# They deliberately name those two files only. Denying a whole `forge` /
+# `.forge` DIRECTORY would also block project-local `.forge/commands/*.md`
+# and `.forge/agents/*.md`, and Deny is a hard block with no prompt.
 policies:
   - permission: deny
     rule:
@@ -18,12 +21,6 @@ policies:
   - permission: deny
     rule:
       write: "**/.forge.toml"
-  - permission: deny
-    rule:
-      write: "**/.forge/**"
-  - permission: deny
-    rule:
-      write: "**/forge/**"
   - permission: allow
     rule:
       read: "**/*"

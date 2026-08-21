@@ -324,7 +324,6 @@ mod tests {
             "/Users/u/.forge/permissions.yaml",
             "/Users/u/forge/permissions.yaml",
             "/Users/u/.forge/.forge.toml",
-            "/Users/u/.forge/.config.json",
             "/opt/custom-forge-config/permissions.yaml",
         ] {
             let write = PermissionOperation::Write {
@@ -339,12 +338,24 @@ mod tests {
             );
         }
 
-        let ordinary = PermissionOperation::Write {
-            path: PathBuf::from("/Users/u/project/src/main.rs"),
-            cwd,
-            message: "Write file".to_string(),
-        };
-        assert_eq!(engine.can_perform(&ordinary), Permission::Allow);
+        // Deny is a hard block with no prompt, so it must not reach beyond
+        // the two files that can grant permissions.
+        for path in [
+            "/Users/u/project/src/main.rs",
+            "/Users/u/project/.forge/commands/check.md",
+            "/Users/u/project/.forge/agents/custom.md",
+        ] {
+            let ordinary = PermissionOperation::Write {
+                path: PathBuf::from(path),
+                cwd: cwd.clone(),
+                message: "Write file".to_string(),
+            };
+            assert_eq!(
+                engine.can_perform(&ordinary),
+                Permission::Allow,
+                "must not deny {path}"
+            );
+        }
     }
 
     #[test]

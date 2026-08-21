@@ -86,6 +86,21 @@ fn has_literal_allow(
     })
 }
 
+/// True when an explicit confirm rule matches the whole command line. Such a
+/// rule is a deliberate "ask me about commands shaped like this" (for example
+/// `command: "*|*"`), so per-simple-command evaluation must not silently
+/// resolve it to Allow. Distinguished from the engine's no-match Confirm
+/// default, which carries no user intent.
+fn has_explicit_confirm(policies: &PolicyConfig, operation: &PermissionOperation) -> bool {
+    policies.policies.iter().any(|policy| match policy {
+        Policy::Simple {
+            permission: Permission::Confirm,
+            rule: rule @ Rule::Execute(_),
+        } => rule.matches(operation),
+        _ => false,
+    })
+}
+
 /// Evaluate an Execute operation against the policy engine, matching each
 /// simple command in the (possibly compound) command line individually.
 ///
@@ -141,6 +156,11 @@ pub fn evaluate_execute_permission(
             Permission::Confirm => result = Permission::Confirm,
             Permission::Allow => {}
         }
+    }
+    // An explicit confirm rule on the whole line outranks the per-command
+    // verdicts: the user asked to be consulted about commands of this shape.
+    if has_explicit_confirm(policies, operation) {
+        return Permission::Confirm;
     }
     if literal_allow {
         return Permission::Allow;
@@ -384,6 +404,68 @@ mod tests {
         assert_eq!(
             evaluate(&raw_deny, "git clone evil && git status"),
             Permission::Deny
+        );
+    }
+
+    #[test]
+    fn test_explicit_confirm_rule_on_the_whole_line_is_not_downgraded() {
+        // A rule like `command: "*|*"` means "ask me about pipelines". Per-
+        // command evaluation must not resolve it to Allow just because each
+        // part is separately allowed.
+        let policies = fixture_policies(&[
+            (Permission::Allow, "cat *"),
+            (Permission::Allow, "sh"),
+            (Permission::Confirm, "*|*"),
+        ]);
+
+        assert_eq!(evaluate(&policies, "cat foo | sh"), Permission::Confirm);
+
+        // A literal allow for the exact line does not override it either.
+        let command = "cat foo | sh";
+        let policies = policies.add_policy(Policy::Simple {
+            permission: Permission::Allow,
+            rule: Rule::Execute(ExecuteRule { command: glob::Pattern::escape(command), dir: None }),
+        });
+        assert_eq!(evaluate(&policies, command), Permission::Confirm);
+    }
+
+    #[test]
+    fn test_sub_commands_are_evaluated_in_the_operations_cwd() {
+        // dir-scoped rules must still see the original cwd once a compound
+        // command is split into simple commands.
+        let policies = PolicyConfig::new()
+            .add_policy(Policy::Simple {
+                permission: Permission::Allow,
+                rule: Rule::Execute(ExecuteRule {
+                    command: "git *".to_string(),
+                    dir: Some("/test/cwd".to_string()),
+                }),
+            })
+            .add_policy(Policy::Simple {
+                permission: Permission::Allow,
+                rule: Rule::Execute(ExecuteRule {
+                    command: "cargo *".to_string(),
+                    dir: Some("/test/cwd".to_string()),
+                }),
+            });
+
+        let engine = PolicyEngine::new(&policies);
+        let in_scope = PermissionOperation::Execute {
+            command: "git add . && cargo test".to_string(),
+            cwd: PathBuf::from("/test/cwd"),
+        };
+        assert_eq!(
+            evaluate_execute_permission(&policies, &engine, &in_scope),
+            Permission::Allow
+        );
+
+        let out_of_scope = PermissionOperation::Execute {
+            command: "git add . && cargo test".to_string(),
+            cwd: PathBuf::from("/somewhere/else"),
+        };
+        assert_eq!(
+            evaluate_execute_permission(&policies, &engine, &out_of_scope),
+            Permission::Confirm
         );
     }
 
