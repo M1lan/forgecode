@@ -366,6 +366,12 @@ input small, both native Emacs.
 
 ### B.5 Tasks
 
+> These boxes were never ticked, but Track B shipped (see the Status table
+> above): the protocol, tool/usage events and selector round-trip all landed
+> in `crates/forge_main/src/frontend/` and are documented in
+> `docs/frontend-protocol.md`. Treat the list as the original plan, not as
+> open work.
+
 - [ ] Define `Frontend`, `ClientEvent`, `ServerEvent` types + serde derives in `crates/forge_main/src/frontend.rs`.
 - [ ] `TtyFrontend` wrapping today's `Console` + `StreamingWriter`. No behaviour change in TTY mode.
 - [ ] `JsonFrontend` reading NDJSON from `stdin`, writing to `stdout`.

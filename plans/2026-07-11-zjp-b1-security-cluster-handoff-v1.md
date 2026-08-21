@@ -1,5 +1,11 @@
 # Next-session handoff: zjp bug epic + B1 cluster + operator asks
 
+> **Status (reviewed 2026-08-21): historical.** Parts of this handoff have
+> since shipped -- operator ask A (dual-install of `forge` + `forge-debug`)
+> is done, in `.just/helpers/install.bash`, despite still being marked `[ ]`
+> below. Verify any `[ ]` item against the code before acting on it; the
+> checkboxes were never updated after the work landed.
+
 Prepared 2026-07-11 by the forgecode debug session (pane s032) for the NEXT
 agent team. Read-only investigation only; NO source changed this session.
 Backed by 12 expert-agent investigations. Task markers: `[ ]` todo,

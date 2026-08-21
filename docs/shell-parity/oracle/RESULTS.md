@@ -13,8 +13,12 @@ Scoring is **differential** and **per-capability** (not one scalar): each
 candidate case is compared against the reference zsh run of the same case.
 Exit code is non-zero if any T1 (MUST) fails.
 
-Artifacts (this dir): `oracle.py`, `fake-forge/forge`, `cases.json`, `run.sh`,
-`broken-plugin/` (the deliberately corrupted candidate).
+Artifacts (this dir): `oracle.py`, `fake-forge/forge`, `cases.json`, `run.sh`.
+
+`broken-plugin/` -- the deliberately corrupted candidate used for the
+negative run below -- was scratch and is **not** checked in, so `./run.sh
+broken` cannot be reproduced as-is. Recreate it by copying `shell-plugin/`
+and reintroducing the argv swap quoted below.
 
 Run env: `TERM=xterm-256color TERM_PROGRAM=ghostty COLUMNS=80 LINES=24
 LC_ALL=C FORGE_SYNC_ENABLED=false`, zsh `-f` (no user rc), fresh zsh per case.

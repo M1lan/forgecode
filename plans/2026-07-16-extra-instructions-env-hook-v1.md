@@ -1,7 +1,13 @@
 # Plan: `FORGE_EXTRA_INSTRUCTIONS_PATH` — generic env-var extra-instructions hook
 
 Date: 2026-07-16
-Status: draft (ready to implement)
+Status: **shipped** (verified 2026-08-21). Implemented in
+`crates/forge_services/src/instructions.rs` (`EXTRA_INSTRUCTIONS_ENV`,
+`MAX_EXTRA_INSTR_BYTES`, tests). The "optional follow-up" shell-plugin export
+below also shipped, in all three plugins (`helpers.zsh`,
+`forge.plugin.bash`, `forge.plugin.fish`) -- the section saying it was
+dropped describes the plan, not the outcome. Unchecked task boxes below are
+historical; do not treat them as open work.
 Supersedes: `plans/2026-07-16-caveman-env-instructions-v1.md`
 Review: 4-specialist pass (oh-my-claudecode architect / critic / security-reviewer / test-engineer)
 

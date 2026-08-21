@@ -19,15 +19,17 @@ This is by far the most important factor in tool performance. Your descriptions 
 
 The more context you can give Claude about your tools, the better it will be at deciding when and how to use them. Aim for 3-4 sentences per tool description, or more if the tool is complex.
 
-> **IMPORTANT**: Tool descriptions must never exceed 1024 characters. This is enforced by tests to ensure compatibility with LLM API constraints.
+> **IMPORTANT**: Keep tool descriptions under 1024 characters for compatibility with LLM API constraints. Nothing in this workspace enforces that automatically — it is a convention you have to honour by hand.
 
 ### 3. Prioritize Descriptions Over Examples
 
 While you can include examples of how to use a tool in its description or in the accompanying prompt, this is less important than having a clear and comprehensive explanation of the tool's purpose and parameters. Only add examples after you've fully fleshed out the description.
 
-### 4. Register All Tools in the Registry
+### 4. Where Tool Descriptions Live
 
-Every tool must be registered in the `crates/forge_services/src/tools/registry.rs` file to be available for use. The `ToolRegistry::tools()` method returns all available tools configured with the given infrastructure.
+A tool is a variant of the `ToolCatalog` enum in `crates/forge_domain/src/tools/catalog.rs`. Its input struct derives `ToolDescription`, and the description text itself lives in a separate markdown file referenced by the `#[tool_description_file = "..."]` attribute — see `crates/forge_domain/src/tools/descriptions/`. Edit the markdown file, not a doc comment: the rustdoc on the surrounding Rust type is not what the model sees.
+
+Dispatch happens in `crates/forge_app/src/tool_registry.rs`.
 
 ## Example Comparison
 
@@ -87,7 +89,7 @@ The poor description is too brief and leaves Claude with many open questions abo
 4. **Describe error handling** - Note how the tool behaves with invalid inputs
 5. **Include domain-specific details** - Add contextual information related to the tool's domain
 6. **Keep descriptions under 1024 characters** - Ensure compatibility with LLM API constraints
-7. **Register your tool in the registry** - Add your tool to the registry.rs file for availability
+7. **Edit the description markdown file** - `crates/forge_domain/src/tools/descriptions/<tool>.md`, referenced from the `ToolCatalog` variant
 
 Thorough yet concise tool descriptions lead to more accurate tool selection, fewer clarification questions, and better overall performance when using Claude with tools.
 

@@ -89,7 +89,3 @@ Headline: bash lands **11 FULL / 16 REDUCED / 0 N/A**; fish lands **~20 FULL /
 (Honourable mention: the `%F{N}`/`%B` style backend in style.rs/rprompt.rs is
 zsh-only and must gain a shell-tagged ANSI/`set_color` emitter — a rendering
 port, not a ZLE gap.)
-
----
-
-Full file: `/Users/milan.santosi/tmp/forge-shell-spec/03-parity-gap.md`

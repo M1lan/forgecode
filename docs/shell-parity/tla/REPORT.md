@@ -22,7 +22,7 @@ Wire capped at 8 marks) and explicitly bounded via `free` (cid pool) and a
 
 ```bash
 JAR=~/.local/share/tla/tla2tools.jar
-cd ~/tmp/forge-shell-spec/spec
+cd "$(git rev-parse --show-toplevel)/docs/shell-parity/tla"
 
 # parse
 java -cp "$JAR" tla2sany.SANY SessionPin.tla
@@ -152,6 +152,6 @@ lives in precmd and always runs, so the HOOK path cannot exhibit this violation.
 | Osc133 well-formed | `Osc133.cfg` | **HOLDS** — 15 distinct states, no error |
 | Osc133 abort | `Osc133Abort.cfg` | **VIOLATED** — INV_ABORT_PAIR unpaired B;C (3-state trace) |
 
-The formal method earned its keep: it produced a concrete before/after for the
-LAST_ACTIVE bug (buggy leaks, fixed holds) and independently rediscovered the
-documented OSC-133 abort gap as a reachable unpaired-B;C violation.
+The model produced a concrete before/after for the LAST_ACTIVE bug (buggy
+leaks, fixed holds) and independently rediscovered the documented OSC-133
+abort gap as a reachable unpaired-B;C violation.

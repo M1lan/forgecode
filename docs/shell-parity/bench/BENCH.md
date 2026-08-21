@@ -49,5 +49,8 @@ any number would be bogus.
 
 ## Artifacts
 
-- `runner.bash` — the benchmark runner.
 - `zsh.json` / `bash.json` / `fish.json` — hyperfine JSON exports.
+
+The runner script itself was scratch and is not checked in; only its output
+survives here. Re-running the benchmark means rewriting the hyperfine
+invocation from the parameters documented above.

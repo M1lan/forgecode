@@ -1,10 +1,13 @@
 # forge_select
 
-A centralized crate for user interaction prompts using dialoguer.
+A centralized crate for terminal user-interaction prompts.
 
 ## Purpose
 
-This crate provides a unified interface for terminal user interactions across the forge codebase. It encapsulates all direct dependencies on `dialoguer`, ensuring no other crates need to depend on it directly.
+This crate provides a unified interface for user interactions across the forge
+codebase, so no other crate has to talk to a prompt library directly. Prompts
+render through a pluggable backend, which is what lets the same call site work
+in a plain terminal, in comint mode, and over the JSON frontend protocol.
 
 ## Features
 
@@ -12,18 +15,22 @@ This crate provides a unified interface for terminal user interactions across th
 - **Confirm prompts**: Yes/no questions
 - **Input prompts**: Text input from user
 - **Multi-select prompts**: Choose multiple options from a list
-- **Consistent theming**: All prompts use a unified color scheme
+- **Row-based select**: Richer rows with preview support (`select_rows`)
+- **Pluggable backend**: `install_selector_backend` / `selector_backend`
+  redirect prompts to a frontend instead of the TTY
 - **Error handling**: Graceful handling of user interruptions
 
 ## Usage
 
+The entry point is `ForgeWidget`.
+
 ### Select from options
 
 ```rust
-use forge_select::ForgeSelect;
+use forge_select::ForgeWidget;
 
 let options = vec!["Option 1", "Option 2", "Option 3"];
-let selected = ForgeSelect::select("Choose an option:", options)
+let selected = ForgeWidget::select("Choose an option:", options)
     .with_starting_cursor(1)
     .prompt()?;
 ```
@@ -31,9 +38,9 @@ let selected = ForgeSelect::select("Choose an option:", options)
 ### Confirm (yes/no)
 
 ```rust
-use forge_select::ForgeSelect;
+use forge_select::ForgeWidget;
 
-let confirmed = ForgeSelect::confirm("Are you sure?")
+let confirmed = ForgeWidget::confirm("Are you sure?")
     .with_default(true)
     .prompt()?;
 ```
@@ -41,9 +48,9 @@ let confirmed = ForgeSelect::confirm("Are you sure?")
 ### Text input
 
 ```rust
-use forge_select::ForgeSelect;
+use forge_select::ForgeWidget;
 
-let name = ForgeSelect::input("Enter your name:")
+let name = ForgeWidget::input("Enter your name:")
     .allow_empty(false)
     .with_default("John")
     .prompt()?;
@@ -52,10 +59,10 @@ let name = ForgeSelect::input("Enter your name:")
 ### Multi-select
 
 ```rust
-use forge_select::ForgeSelect;
+use forge_select::ForgeWidget;
 
 let options = vec!["Red", "Green", "Blue"];
-let selected = ForgeSelect::multi_select("Choose colors:", options)
+let selected = ForgeWidget::multi_select("Choose colors:", options)
     .prompt()?;
 ```
 
@@ -64,24 +71,23 @@ let selected = ForgeSelect::multi_select("Choose colors:", options)
 ### Builder Pattern
 
 All prompt types use a builder pattern for configuration:
-- Create the builder with `ForgeSelect::select()`, `ForgeSelect::confirm()`, etc.
+
+- Create the builder with `ForgeWidget::select()`, `ForgeWidget::confirm()`, etc.
 - Configure options with `.with_*()` methods
 - Execute with `.prompt()`
 
-### Ownership vs Clone
+### Backends
 
-Two variants for select operations:
-- `select()`: Requires `Clone` for options, useful when you need the list after selection
-- `select_owned()`: Takes ownership, no `Clone` required, more efficient
-
-### Theme
-
-All prompts use a consistent `ColorfulTheme` from dialoguer, providing a unified look across the application.
+Prompts do not assume a TTY. `install_selector_backend` swaps in a backend so
+a frontend can answer prompts over a protocol instead; `is_comint` and
+`is_json` report which frontend mode is active.
 
 ## Integration
 
 This crate is used by:
+
 - `forge_main`: For CLI user interactions
 - `forge_infra`: For implementing the `UserInfra` trait
 
-No other crates should depend on `dialoguer` directly - use this crate instead.
+Route all user prompts through this crate rather than reaching for a prompt
+library directly.

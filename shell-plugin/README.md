@@ -1,6 +1,18 @@
-# Forge ZSH Plugin
+# Forge Shell Plugin
 
-A powerful ZSH plugin that provides intelligent command transformation, file tagging, and conversation management for the Forge AI assistant.
+A shell plugin that provides command transformation, file tagging, and
+conversation management for the Forge AI assistant.
+
+ZSH is the reference implementation and is what this document describes. Ports
+for other shells live alongside it and track the same behaviour:
+
+| Shell | Location | Load |
+|---|---|---|
+| zsh | `shell-plugin/` | `forge zsh setup` |
+| bash | `shell-plugin/bash/` | `forge bash setup` |
+| fish | `shell-plugin/fish/` | `forge fish setup` |
+
+Differences between the ports are documented in `docs/shell-parity/`.
 
 ## Features
 
@@ -124,8 +136,6 @@ This displays:
 - Project details
 - Current configuration
 
-- Current configuration
-
 #### Switching Conversations
 
 Browse and switch between conversations interactively:
@@ -199,9 +209,12 @@ The plugin automatically displays session information including:
 
 The plugin provides visual feedback through syntax highlighting:
 
-- **Tagged Files** (`@[filename]`): Displayed in **green bold**
-- **Agent Commands** (`:agent`): Agent names in **yellow bold**
-- **Command Text**: Remaining text in **white bold**
+- **Tagged Files** (`@[filename]`): displayed in **cyan bold**
+- **Agent Commands** (`:agent`): agent names in **yellow bold**
+- **Command Text**: remaining text in white
+
+Highlighting is driven by `ZSH_HIGHLIGHT_PATTERNS` entries in
+`shell-plugin/lib/highlight.zsh`, so it requires `zsh-syntax-highlighting`.
 
 ## Configuration
 
@@ -282,7 +295,7 @@ All transformed commands are properly saved to ZSH history, allowing you to:
 ```bash
 : What's the weather like?
 :sage Explain the MVC pattern
-:planner Help me structure this project
+:muse Help me structure this project
 ```
 
 ### With File Tagging

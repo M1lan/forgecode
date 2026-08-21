@@ -1,6 +1,14 @@
 # Forge — RUST INTEGRATION SURFACE for adding shells (bash, fish) alongside zsh
 
-Repo: `/Users/milan.santosi/mysrc/forgecode`. Read-only survey. All paths absolute below are relative to that root.
+> **Status: superseded by the implementation.** This was a pre-implementation
+> survey; the bash and fish ports shipped shortly after it was written. The
+> "Integration checklist" below records what was planned, not outstanding
+> work -- read `shell-plugin/bash/`, `shell-plugin/fish/` and
+> `crates/forge_main/src/zsh/` for what was actually built. Note the plan's
+> `shell-plugin-bash/` / `shell-plugin-fish/` layout was not used: the ports
+> live under `shell-plugin/bash/` and `shell-plugin/fish/`.
+
+Read-only survey. Paths are relative to the repository root.
 
 Everything shell-specific lives in `crates/forge_main/src/zsh/` + the `shell-plugin/` asset tree + the `Zsh(ZshCommandGroup)` CLI wiring + the `ui.rs` dispatch arms. A new shell must replicate all four.
 
@@ -131,7 +139,7 @@ Markers (`# >>> forge initialize >>>` / `# <<< forge initialize <<<`) are `#`-co
 
 ---
 
-## Integration checklist (concrete, ordered)
+## Integration checklist (as planned; see status note above)
 1. Add `ShellKind {Zsh,Bash,Fish}` value enum in `cli.rs`; add `$SHELL` auto-detect helper (mirror `FrontendMode::resolve`).
 2. Rename `ZshCommandGroup`→`ShellCommandGroup`; add group-level `shell: ShellKind` arg (mirror `AgentCommandGroup` global-arg pattern); keep `zsh`/`extension` aliases; add `shell` alias on `TopLevelCommand`.
 3. Create `shell-plugin-bash/` and `shell-plugin-fish/` trees (lib + actions/functions, theme, setup, doctor, keyboard) — port the 7 `lib/*.zsh` + 7 `lib/actions/*.zsh` files.

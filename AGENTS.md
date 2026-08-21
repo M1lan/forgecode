@@ -110,9 +110,10 @@ something to report at a human.
 `just ci` can modify files. That is the point; review and commit them.
 `just ci-check` never writes.
 
-**`just test` rewrites files.** Two of the four `tests/` dirs are generators:
-`crates/forge_ci/tests/ci.rs` writes every `.github/workflows/*.yml`, and
-`crates/forge_config/tests/schema.rs` writes `forge.schema.json`. `--accept`
+**`just test` rewrites files.** One of the four `tests/` dirs is a generator:
+`crates/forge_config/tests/schema.rs` writes `forge.schema.json`.
+(`crates/forge_ci/tests/ci.rs` generates nothing in this fork — it guards the
+fork-owned workflow directory instead; see Git Operations below.) `--accept`
 also rewrites any drifted snapshot. Use `just test` when you intend to accept
 snapshots; use `just test-check` when you are verifying. `just
 verify-clean-tree` proves nothing was silently regenerated.
@@ -150,11 +151,21 @@ per-project explore budget, so spend it deliberately.
 **`ast-grep` cannot parse the Justfile** — there is no `just`/`make` grammar.
 Use `rg` there.
 
+**`grepai` answers from a watcher-maintained index, not from the working
+tree.** `just ai grepai sync` starts a background watcher that keeps the index
+live; without a running watcher `grepai search` silently answers from whatever
+was indexed last, which on a branch you just switched to means confidently
+wrong results. Check `just ai status` before trusting a semantic search, and
+prefer `rg` when you know the name.
+
 **`repowise` was removed** on 2026-08-08: its synthesis timed out at 32 s
 returning nothing, its index was 11 days stale, and every question it answered
 was answered faster by one of the five above.
 
 Index maintenance goes through one recipe: `just ai status|init|sync|search`.
+Do not invoke `gitnexus analyze` or `node .gitnexus/run.cjs analyze` directly:
+the recipe passes `--skip-agents-md --skip-skills`, and without those flags a
+re-index rewrites this file, `CLAUDE.md` and `.claude/skills/`.
 
 ## Git Operations — fork layout
 
@@ -355,7 +366,7 @@ Boundaries: code/commits/PRs written normal.
 
 This project is indexed by GitNexus as **forgecode** (14157 symbols, 33288 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
-> Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
+> Index stale? Run `just ai gitnexus sync`. It wraps `gitnexus analyze --skip-agents-md --skip-skills`, so re-indexing cannot rewrite AGENTS.md, CLAUDE.md or `.claude/skills/`. Do not run bare `gitnexus analyze` / `node .gitnexus/run.cjs analyze` in this repo.
 
 ### Always Do
 
