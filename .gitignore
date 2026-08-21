@@ -63,6 +63,13 @@ bench/__pycache__
 # `just coverage` output
 lcov.info
 
+# Beads database schema migration recovery artifacts
+.beads/.beads.db.schema-migration-*
+
+# Local pnpm metadata (npm lockfile is canonical)
+pnpm-lock.yaml
+pnpm-workspace.yaml
+
 # Harness/editor spy dirs (not part of forgecode)
 .clinerules/
 .cursor/
