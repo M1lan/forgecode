@@ -262,7 +262,7 @@
       "default": false
     },
     "restricted": {
-      "description": "Whether restricted mode is active; when enabled, tool execution requires\nexplicit permission grants.",
+      "description": "Whether restricted mode is active; when enabled, tool execution requires\nexplicit permission grants. The embedded defaults (`.forge.toml`)\nenable this in the fork; set `restricted = false` to opt out.",
       "type": "boolean",
       "default": false
     },

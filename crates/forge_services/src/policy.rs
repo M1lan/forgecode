@@ -276,6 +276,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_default_policies_confirm_commands_and_fetch_allow_read_write() {
+        let engine = PolicyEngine::new(&DEFAULT_POLICIES);
+        let cwd = std::path::PathBuf::from("/test/cwd");
+
+        let execute =
+            PermissionOperation::Execute { command: "rm -rf /".to_string(), cwd: cwd.clone() };
+        assert_eq!(engine.can_perform(&execute), Permission::Confirm);
+
+        let fetch = PermissionOperation::Fetch {
+            url: "https://evil.example.com/x".to_string(),
+            cwd: cwd.clone(),
+            message: "Fetch content from URL".to_string(),
+        };
+        assert_eq!(engine.can_perform(&fetch), Permission::Confirm);
+
+        let read = PermissionOperation::Read {
+            path: PathBuf::from("/path/to/file.rs"),
+            cwd: cwd.clone(),
+            message: "Read file".to_string(),
+        };
+        assert_eq!(engine.can_perform(&read), Permission::Allow);
+
+        let write = PermissionOperation::Write {
+            path: PathBuf::from("/path/to/file.rs"),
+            cwd,
+            message: "Write file".to_string(),
+        };
+        assert_eq!(engine.can_perform(&write), Permission::Allow);
+    }
+
+    #[test]
     fn test_create_policy_for_read_operation() {
         let path = PathBuf::from("/path/to/file.rs");
         let operation = PermissionOperation::Read {
