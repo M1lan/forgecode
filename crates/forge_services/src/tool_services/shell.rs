@@ -12,12 +12,9 @@ fn strip_ansi(content: String) -> String {
     strip(content.as_bytes()).to_str_lossy().into_owned()
 }
 
-/// Prevents potentially harmful operations like absolute path execution and
-/// directory changes. Use for file system interaction, running utilities,
-/// installing packages, or executing build commands. For operations requiring
-/// unrestricted access, advise users to run forge CLI with '-u' flag. Returns
-/// complete output including stdout, stderr, and exit code for diagnostic
-/// purposes.
+/// Executes shell commands for file system interaction, running utilities,
+/// installing packages, or executing build commands. Returns complete output
+/// including stdout, stderr, and exit code for diagnostic purposes.
 pub struct ForgeShell<I> {
     env: Environment,
     infra: Arc<I>,
