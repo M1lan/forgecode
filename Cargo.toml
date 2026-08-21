@@ -125,6 +125,8 @@ tonic = { version = "0.14.5", features = ["tls-webpki-roots"] }
 tracing = "0.1.44"
 tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+tree-sitter = "0.26.12"
+tree-sitter-bash = "0.25.1"
 url = { version = "2.5.8", features = ["serde"] }
 terminal_size = "0.4"
 unicode-width = "0.2"

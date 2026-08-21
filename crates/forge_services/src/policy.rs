@@ -165,7 +165,14 @@ where
         let (policies, path) = self.get_or_create_policies().await?;
 
         let engine = PolicyEngine::new(&policies);
-        let permission = engine.can_perform(operation);
+        // Execute operations are matched per simple command (AST-based), so
+        // glob allow-rules cannot be bypassed with compound commands.
+        let permission = match operation {
+            PermissionOperation::Execute { .. } => {
+                crate::command_extract::evaluate_execute_permission(&policies, &engine, operation)
+            }
+            _ => engine.can_perform(operation),
+        };
 
         match permission {
             Permission::Deny => Ok(PolicyDecision { allowed: false, path }),
@@ -304,6 +311,66 @@ mod tests {
             message: "Write file".to_string(),
         };
         assert_eq!(engine.can_perform(&write), Permission::Allow);
+    }
+
+    #[test]
+    fn test_default_policies_deny_writes_to_own_config() {
+        // The write allow-all would otherwise let an agent grant itself
+        // command permissions by editing its own policy or config file.
+        let engine = PolicyEngine::new(&DEFAULT_POLICIES);
+        let cwd = std::path::PathBuf::from("/test/cwd");
+
+        for path in [
+            "/Users/u/.forge/permissions.yaml",
+            "/Users/u/forge/permissions.yaml",
+            "/Users/u/.forge/.forge.toml",
+            "/Users/u/.forge/.config.json",
+            "/opt/custom-forge-config/permissions.yaml",
+        ] {
+            let write = PermissionOperation::Write {
+                path: PathBuf::from(path),
+                cwd: cwd.clone(),
+                message: "Write file".to_string(),
+            };
+            assert_eq!(
+                engine.can_perform(&write),
+                Permission::Deny,
+                "must deny writes to {path}"
+            );
+        }
+
+        let ordinary = PermissionOperation::Write {
+            path: PathBuf::from("/Users/u/project/src/main.rs"),
+            cwd,
+            message: "Write file".to_string(),
+        };
+        assert_eq!(engine.can_perform(&ordinary), Permission::Allow);
+    }
+
+    #[test]
+    fn test_remembered_rules_take_effect_under_default_policies() {
+        // Regression: expressing "confirm" as a catch-all `command: "*"` rule
+        // shadowed every allow rule, because the engine returns the first
+        // matching Confirm and drops any Allow it already saw -- so
+        // Accept-and-Remember silently never worked.
+        let cwd = std::path::PathBuf::from("/test/cwd");
+        let operation =
+            PermissionOperation::Execute { command: "cargo test".to_string(), cwd: cwd.clone() };
+
+        let mut policies = DEFAULT_POLICIES.clone();
+        policies = policies.add_policy(create_policy_for_operation(&operation, None).unwrap());
+        let engine = PolicyEngine::new(&policies);
+
+        assert_eq!(
+            crate::command_extract::evaluate_execute_permission(&policies, &engine, &operation),
+            Permission::Allow
+        );
+
+        let other = PermissionOperation::Execute { command: "cargo publish".to_string(), cwd };
+        assert_eq!(
+            crate::command_extract::evaluate_execute_permission(&policies, &engine, &other),
+            Permission::Confirm
+        );
     }
 
     #[test]

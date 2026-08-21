@@ -268,8 +268,12 @@ pub struct ForgeConfig {
     pub compact: Option<Compact>,
 
     /// Whether restricted mode is active; when enabled, tool execution requires
-    /// explicit permission grants. The embedded defaults (`.forge.toml`)
-    /// enable this in the fork; set `restricted = false` to opt out.
+    /// explicit permission grants.
+    ///
+    /// The `default` below is only the struct fallback for a config built
+    /// without any layers. Every real config layers the embedded
+    /// `.forge.toml` first, which sets `restricted = true` in this fork; set
+    /// `restricted = false` in `~/.forge/.forge.toml` to opt out.
     #[serde(default)]
     pub restricted: bool,
 

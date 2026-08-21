@@ -4,6 +4,7 @@ mod attachment;
 mod auth;
 mod clipper;
 mod command;
+mod command_extract;
 mod context_engine;
 mod conversation;
 mod discovery;

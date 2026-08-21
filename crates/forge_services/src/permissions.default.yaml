@@ -1,13 +1,32 @@
+# Fork posture: reads and writes are allowed outright; commands and URL
+# fetches are confirmed with the user.
+#
+# Confirmation is expressed by the ABSENCE of a rule, not by a
+# `confirm`/`command: "*"` catch-all: PolicyEngine returns the first matching
+# Deny/Confirm it finds and discards any Allow it already saw, so a catch-all
+# confirm would shadow every allow rule -- including the ones written by
+# "Accept and Remember" -- and re-prompt forever. With no matching rule the
+# engine already defaults to Confirm.
+#
+# The deny rules come first because Deny always wins over Allow: without them
+# the write allow-all would let an agent grant itself command permissions by
+# editing permissions.yaml or setting `restricted = false` in .forge.toml.
 policies:
+  - permission: deny
+    rule:
+      write: "**/permissions.yaml"
+  - permission: deny
+    rule:
+      write: "**/.forge.toml"
+  - permission: deny
+    rule:
+      write: "**/.forge/**"
+  - permission: deny
+    rule:
+      write: "**/forge/**"
   - permission: allow
     rule:
       read: "**/*"
   - permission: allow
     rule:
       write: "**/*"
-  - permission: confirm
-    rule:
-      command: "*"
-  - permission: confirm
-    rule:
-      url: "*"
