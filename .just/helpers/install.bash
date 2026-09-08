@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # install.bash -- put a usable forge on PATH, and make it identifiable.
 #
-#   install.bash release   cargo install -> ~/.cargo/bin/forge
+#   install.bash release   copy target/release/forge -> ~/.cargo/bin/forge
 #   install.bash debug     copy target/debug/forge -> ~/.cargo/bin/forge-debug
+#
+# BUILD+COPY, NOT `cargo install`. cargo install re-resolves dependencies
+# fresh from crates.io (it broke the day every bisync version was yanked),
+# hits the network, and does not reuse build artifacts between runs -- a
+# full lto rebuild per install. `cargo build --release` reuses target/
+# incrementally; only changed crates recompile.
 #
 # THE FIXED PATH IS DELIBERATE. CARGO_HOME, CARGO_INSTALL_ROOT and cargo's
 # own install.root config are all ignored: both binaries always land in
@@ -53,13 +59,17 @@ install_release() {
   version=$(app_version)
   printf 'building %s release, APP_VERSION=%s\n' "$PKGNAME" "$version"
 
-  APP_VERSION="$version" cargo install --locked --path "crates/$MAIN_CRATE" --force --root "$HOME/.cargo" ||
-    just_die 'cargo install failed'
+  APP_VERSION="$version" cargo build --release -p "$MAIN_CRATE" || just_die 'cargo build failed'
 
-  local bin_path="$BIN_DIR/$PKGNAME"
-  codesign_if_macos "$bin_path"
-  printf '\n%s\n' "$("$bin_path" --version)"
-  printf 'installed %s\n' "$bin_path"
+  mkdir -p -- "$BIN_DIR" || exit 1
+  local src="target/release/$PKGNAME"
+  local dst="$BIN_DIR/$PKGNAME"
+  [[ -x $src ]] || just_die "missing $src after build"
+
+  cp -f -- "$src" "$dst" || exit 1
+  codesign_if_macos "$dst"
+  printf '\n%s\n' "$("$dst" --version)"
+  printf 'installed %s\n' "$dst"
 }
 
 install_debug() {

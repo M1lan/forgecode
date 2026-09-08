@@ -434,13 +434,17 @@ install-debug:
 [group('install')]
 install-both: install install-debug
 
-# Rebuild from scratch and reinstall the release binary.
+# Rebuild (incremental) and reinstall the release binary. Fast path.
 [group('install')]
-reinstall: clean install
+reinstall: install
 
-# Rebuild from scratch and reinstall both binaries.
+# Delete target/ first, then rebuild and reinstall from scratch. Slow path.
 [group('install')]
-reinstall-both: clean install-both
+reinstall-clean: clean install
+
+# Rebuild (incremental) and reinstall both binaries.
+[group('install')]
+reinstall-both: install-both
 
 # Enumerate PATH shadows for {{ bin }}; fails when the winner is not canonical.
 [group('install')]

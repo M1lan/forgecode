@@ -144,8 +144,9 @@ Machine-readable form: `just --dump --dump-format json`.
 | `install-audit` | – | Enumerate PATH shadows for {{ bin }}; fails when the winner is not canonical. |
 | `install-both` | – | Install both binaries. |
 | `install-debug` | – | Build and install the debug binary as {{ bin }}-debug. |
-| `reinstall` | – | Rebuild from scratch and reinstall the release binary. |
-| `reinstall-both` | – | Rebuild from scratch and reinstall both binaries. |
+| `reinstall` | – | Rebuild (incremental) and reinstall the release binary. Fast path. |
+| `reinstall-both` | – | Rebuild (incremental) and reinstall both binaries. |
+| `reinstall-clean` | – | Delete target/ first, then rebuild and reinstall from scratch. Slow path. |
 
 ## debug
 
@@ -206,7 +207,8 @@ lint <- fmt-check, clippy, clippy-strict, shellcheck, rumdl, typos
 list-porcelain <- build
 pre-push <- fmt-check, check, clippy
 rebuild <- clean, build
-reinstall <- clean, install
-reinstall-both <- clean, install-both
+reinstall <- install
+reinstall-both <- install-both
+reinstall-clean <- clean, install
 test-zsh <- build
 ```
