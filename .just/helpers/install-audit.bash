@@ -6,9 +6,8 @@
 #   install-audit.bash --self-test  internal assertions on the parsing
 #                                    logic; no PATH mutation, no install
 #
-# Canonical binary: this repo's `install-release` runs
-#   cargo install --path crates/forge_main --force --root "$HOME/.cargo"
-# which writes $HOME/.cargo/bin/forge -- that is the ONE binary any shell
+# Canonical binary: this repo's `just install` builds the release binary and
+# copies it to $HOME/.cargo/bin/forge -- that is the ONE binary any shell
 # should ever run. Deliberately fixed: CARGO_HOME / CARGO_INSTALL_ROOT /
 # Cargo's own install.root config are NOT honored here -- this audit checks
 # one specific literal path, by explicit request, not cargo's general
@@ -140,7 +139,7 @@ for bin in "${bins[@]}"; do
   bin_versions+=("$(probe_version "$bin")")
 done
 
-# 3: the artifact `just install-release` produces is not what a fresh shell runs.
+# 3: the artifact `just install` produces is not what a fresh shell runs.
 shadowed=0
 if [[ $winner != "$canonical" ]]; then
   shadowed=1
@@ -164,7 +163,7 @@ if [[ $MODE == --table ]]; then
     printf '  %s%-8s expected %s, PATH resolves %s instead%s\n' "$C_RED" "shadowed" "$canonical" "$winner" "$C_RESET"
   fi
   if ((rc)); then
-    printf '  %shint: just install-release, then re-run just doctor%s\n' "$C_YELLOW" "$C_RESET"
+    printf '  %shint: just install, then re-run just doctor%s\n' "$C_YELLOW" "$C_RESET"
     printf '  %snote: shadowing binaries are never deleted automatically%s\n' "$C_DIM" "$C_RESET"
   fi
   exit "$rc"

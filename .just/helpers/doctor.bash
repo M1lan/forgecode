@@ -119,7 +119,7 @@ if [[ "${1:-}" == "--factoid" ]]; then
   if git -C "$JUST_REPO_DIR" status --porcelain 2> /dev/null | rg -q .; then
     printf 'tree is dirty -- just lint to check before committing'
   elif [[ ! -x "$JUST_REPO_DIR/target/release/$PKGNAME" ]]; then
-    printf 'no release build -- just install-release'
+    printf 'no release build -- just install'
   else
     printf 'all green -- just ci before pushing'
   fi

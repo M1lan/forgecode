@@ -14,7 +14,7 @@
 # ast-grep owns which question -- is in AGENTS.md.
 #
 # Usage:
-#   scripts/ai-tools.bash <command> [args]
+#   ai-tools.bash <command> [args]   (via `just ai <command> [args]`)
 #
 # Global commands (fan out across all tools):
 #   doctor              tool availability + versions + index presence
@@ -71,7 +71,7 @@ require() {
   have "$1" || die "missing tool: $1 (not on PATH)" 3
 }
 
-# The four indexers: name → binary, index dir.
+# The three indexers: name → binary, index dir.
 TOOLS=(gitnexus codegraph grepai)
 declare -A TOOL_DIR=(
   [gitnexus]=.gitnexus
