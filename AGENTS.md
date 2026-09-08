@@ -93,46 +93,36 @@ This document contains guidelines and best practices for AI agents working with 
 
 ## Verification
 
-Go through `just`. The Justfile is the single source of truth for every gate;
-betterhook's git hooks call the same recipes, so a gate that passes locally
-passes in the hook by construction. Full recipe reference: `docs/justfile.md`
-(generated — run `just docs` after changing a recipe, `just docs-check` gates it).
+Go through `just`. The Justfile is the single source of truth for every gate; betterhook's git hooks call the same recipes, so a gate that passes
+locally passes in the hook by construction. Full recipe reference: `docs/justfile.md` (generated — run `just docs` after changing a recipe, `just
+docs-check` gates it).
 
-**There is one gate: `just ci`.** It repairs before it judges — rustfmt,
-`clippy --fix`, typos, rumdl and the generated docs all run first, then the
-same tools run again in check mode. A lint that a tool can fix is not
-something to report at a human.
+**There is one gate: `just ci`.** It repairs before it judges — rustfmt, `clippy --fix`, typos, rumdl and the generated docs all run first, then the
+same tools run again in check mode. A lint that a tool can fix is not something to report at a human.
 
 1. `just check` — type-check the workspace. Fastest.
 2. `just ci` — fix everything fixable, then prove the tree. **Use this.**
 3. `just ci-check` — the same gate, read-only. What the pre-push hook runs.
 
-`just ci` can modify files. That is the point; review and commit them.
-`just ci-check` never writes.
+`just ci` can modify files. That is the point; review and commit them. `just ci-check` never writes.
 
-**`just test` rewrites files.** One of the four `tests/` dirs is a generator:
-`crates/forge_config/tests/schema.rs` writes `forge.schema.json`.
-(`crates/forge_ci/tests/ci.rs` generates nothing in this fork — it guards the
-fork-owned workflow directory instead; see Git Operations below.) `--accept`
-also rewrites any drifted snapshot. Use `just test` when you intend to accept
-snapshots; use `just test-check` when you are verifying. `just
+**`just test` rewrites files.** One of the four `tests/` dirs is a generator: `crates/forge_config/tests/schema.rs` writes `forge.schema.json`.
+(`crates/forge_ci/tests/ci.rs` generates nothing in this fork — it guards the fork-owned workflow directory instead; see Git Operations below.)
+`--accept` also rewrites any drifted snapshot. Use `just test` when you intend to accept snapshots; use `just test-check` when you are verifying. `just
 verify-clean-tree` proves nothing was silently regenerated.
 
-**No recipe skips silently.** A missing tool exits non-zero with the install
-command attached. If something is missing, `just doctor` lists everything.
+**No recipe skips silently.** A missing tool exits non-zero with the install command attached. If something is missing, `just doctor` lists everything.
 
 **Build guidelines**:
 
-- **NEVER** run `cargo build --release` unless absolutely necessary. Use
-  `just check`, `just test-check`, or `just build` (debug, one crate).
+- **NEVER** run `cargo build --release` unless absolutely necessary. Use `just check`, `just test-check`, or `just build` (debug, one crate).
 - `just build` builds only `forge_main`; `just build-workspace` builds all 25.
 - `protoc` is a hard build dependency (`crates/forge_repo/build.rs`).
 
 ## Code intelligence — which tool answers which question
 
-Five tools, five jobs, no overlap. Chosen by measurement on this repo
-(2026-08-08), not by reputation. Do not reach for a second tool that answers
-the question a cheaper one already answered.
+Five tools, five jobs, no overlap. Chosen by measurement on this repo (2026-08-08), not by reputation. Do not reach for a second tool that answers the
+question a cheaper one already answered.
 
 | question | tool | why this one |
 |---|---|---|
@@ -143,48 +133,34 @@ the question a cheaper one already answered.
 | what breaks if I change this symbol? | `gitnexus impact` | 137 ms, ~2 KB. Nothing else computes blast radius. |
 | enforce or rewrite a code **pattern** | `ast-grep` (`sgconfig.yml`, `rules/`) | real AST rules for Rust and Bash. |
 
-**`codegraph` takes names, never questions.** Given a natural-language
-question it returned unrelated files in both measured trials; given a bag of
-symbol names it found the right code every time. It also self-reports a small
-per-project explore budget, so spend it deliberately.
+**`codegraph` takes names, never questions.** Given a natural-language question it returned unrelated files in both measured trials; given a bag of
+symbol names it found the right code every time. It also self-reports a small per-project explore budget, so spend it deliberately.
 
-**`ast-grep` cannot parse the Justfile** — there is no `just`/`make` grammar.
-Use `rg` there.
+**`ast-grep` cannot parse the Justfile** — there is no `just`/`make` grammar. Use `rg` there.
 
-**`grepai` answers from a watcher-maintained index, not from the working
-tree.** `just ai grepai sync` starts a background watcher that keeps the index
-live; without a running watcher `grepai search` silently answers from whatever
-was indexed last, which on a branch you just switched to means confidently
-wrong results. Check `just ai status` before trusting a semantic search, and
-prefer `rg` when you know the name.
+**`grepai` answers from a watcher-maintained index, not from the working tree.** `just ai grepai sync` starts a background watcher that keeps the index
+live; without a running watcher `grepai search` silently answers from whatever was indexed last, which on a branch you just switched to means
+confidently wrong results. Check `just ai status` before trusting a semantic search, and prefer `rg` when you know the name.
 
-**`repowise` was removed** on 2026-08-08: its synthesis timed out at 32 s
-returning nothing, its index was 11 days stale, and every question it answered
+**`repowise` was removed** on 2026-08-08: its synthesis timed out at 32 s returning nothing, its index was 11 days stale, and every question it answered
 was answered faster by one of the five above.
 
-Index maintenance goes through one recipe: `just ai status|init|sync|search`.
-Do not invoke `gitnexus analyze` or `node .gitnexus/run.cjs analyze` directly:
-the recipe passes `--skip-agents-md --skip-skills`, and without those flags a
-re-index rewrites this file, `CLAUDE.md` and `.claude/skills/`.
+Index maintenance goes through one recipe: `just ai status|init|sync|search`. Do not invoke `gitnexus analyze` or `node .gitnexus/run.cjs analyze`
+directly: the recipe passes `--skip-agents-md --skip-skills`, and without those flags a re-index rewrites this file, `CLAUDE.md` and `.claude/skills/`.
 
 ## Git Operations — fork layout
 
-This checkout is a fork. `origin` is the fork; `upstream` is the project it
-was forked from. Local `main` is a pure mirror of `upstream/main`; the work
+This checkout is a fork. `origin` is the fork; `upstream` is the project it was forked from. Local `main` is a pure mirror of `upstream/main`; the work
 lives on `mymain`.
 
-**Never rebase `mymain`.** It carries 56+ commits and there is a linked
-worktree; a rebase rewrites every SHA, breaks the worktree and forces a push.
-Use `just sync-upstream`, which fast-forwards the mirror and merges.
-`just upstream-status` shows what would land, read-only.
+**Never rebase `mymain`.** It carries 56+ commits and there is a linked worktree; a rebase rewrites every SHA, breaks the worktree and forces a push.
+Use `just sync-upstream`, which fast-forwards the mirror and merges. `just upstream-status` shows what would land, read-only.
 
-`.github/workflows/` is **fork-owned and hand-written**, and holds exactly one
-minimal build-and-test workflow. Upstream generates seven from `crates/forge_ci`
-as a test side effect; this fork does not — `crates/forge_ci/tests/ci.rs` now
-guards the directory instead of writing it (`just workflows-check`).
+`.github/workflows/` is **fork-owned and hand-written**, and holds exactly one minimal build-and-test workflow. Upstream generates seven from
+`crates/forge_ci` as a test side effect; this fork does not — `crates/forge_ci/tests/ci.rs` now guards the directory instead of writing it (`just
+workflows-check`).
 
-**Never put `just` in a CI workflow.** The Justfile is the local developer
-interface: it assumes GNU Bash 5.3+, mise-pinned tools, fzf, gum and a warm
+**Never put `just` in a CI workflow.** The Justfile is the local developer interface: it assumes GNU Bash 5.3+, mise-pinned tools, fzf, gum and a warm
 cargo cache. CI calls cargo directly. A test enforces this.
 
 ## Writing Domain Types
@@ -205,7 +181,8 @@ cargo cache. CI calls cargo directly. A test enforces this.
 
 - Safely assume git is pre-installed
 - Safely assume github cli (gh) is pre-installed
-- Never add commit trailers of any kind (no `Co-Authored-By`, no `Assisted-By`) to git commits, PRs, or GitHub comments — operator global rule (2026-07-24) supersedes the former ForgeCode trailer requirement
+- Never add commit trailers of any kind (no `Co-Authored-By`, no `Assisted-By`) to git commits, PRs, or GitHub comments — operator global rule
+  (2026-07-24) supersedes the former ForgeCode trailer requirement
 
 ## Service Implementation Guidelines
 
@@ -328,20 +305,14 @@ let service = BadUserService::<PostgresRepo, RedisCache, FileLogger>::new(...);
 
 ## Active known bug + deferred work (forge-zsh shell-plugin)
 
-Operator note, 2026-06-15. Relevant here because `forge-zsh` lives in
-`shell-plugin/`.
+Operator note, 2026-06-15. Relevant here because `forge-zsh` lives in `shell-plugin/`.
 
-- KNOWN BUG (CRITICAL): after `C-c C-c` then re-sending a prompt via
-  `:`, forge-zsh can resume the WRONG conversation in the WRONG cwd --
-  a session started in a different Ghostty window -- even though cwd
-  never changed. Suspected: `:` dispatch resolves "current
-  conversation" from global/last-active state instead of pinning to
-  this terminal. Investigation: `shell-plugin/lib/` (dispatcher,
-  bindings, context). If session/cwd feels off after abort+resend,
-  STOP and confirm identity first.
-- DEFERRED: a multi-topic improvement draft (per-tty session pinning via
-  a Ghostty-window-title short-id mirrored to a `~` entity tree; omf
-  tool; readline/steering UX) is parked, NOT for ad-hoc execution.
+- KNOWN BUG (CRITICAL): after `C-c C-c` then re-sending a prompt via `:`, forge-zsh can resume the WRONG conversation in the WRONG cwd -- a session
+  started in a different Ghostty window -- even though cwd never changed. Suspected: `:` dispatch resolves "current conversation" from
+  global/last-active state instead of pinning to this terminal. Investigation: `shell-plugin/lib/` (dispatcher, bindings, context). If session/cwd feels
+  off after abort+resend, STOP and confirm identity first.
+- DEFERRED: a multi-topic improvement draft (per-tty session pinning via a Ghostty-window-title short-id mirrored to a `~` entity tree; omf tool;
+  readline/steering UX) is parked, NOT for ad-hoc execution.
 - Canonical home: `~/prompts/experiments/forge-system-cohesion/`.
 
 Respond terse like smart caveman. All technical substance stay. Only fluff die.
@@ -354,8 +325,7 @@ Rules:
 - Not: "Sure! I'd be happy to help you with that."
 - Yes: "Bug in auth middleware. Fix:"
 
-Switch level: /caveman lite|full|ultra|wenyan
-Stop: "stop caveman" or "normal mode"
+Switch level: /caveman lite|full|ultra|wenyan Stop: "stop caveman" or "normal mode"
 
 Auto-Clarity: drop caveman for security warnings, irreversible actions, user confused. Resume after.
 
@@ -364,16 +334,21 @@ Boundaries: code/commits/PRs written normal.
 <!-- gitnexus:start -->
 ## GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **forgecode** (14157 symbols, 33288 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **forgecode** (14157 symbols, 33288 relationships, 300 execution flows). Use the GitNexus MCP tools to understand
+code, assess impact, and navigate safely.
 
-> Index stale? Run `just ai gitnexus sync`. It wraps `gitnexus analyze --skip-agents-md --skip-skills`, so re-indexing cannot rewrite AGENTS.md, CLAUDE.md or `.claude/skills/`. Do not run bare `gitnexus analyze` / `node .gitnexus/run.cjs analyze` in this repo.
+> Index stale? Run `just ai gitnexus sync`. It wraps `gitnexus analyze --skip-agents-md --skip-skills`, so re-indexing cannot rewrite AGENTS.md,
+> CLAUDE.md or `.claude/skills/`. Do not run bare `gitnexus analyze` / `node .gitnexus/run.cjs analyze` in this repo.
 
 ### Always Do
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, compare against the default branch: `detect_changes({scope: "compare", base_ref: "mymain"})`.
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction:
+  "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review,
+  compare against the default branch: `detect_changes({scope: "compare", base_ref: "mymain"})`.
 - **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `query({search_query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When exploring unfamiliar code, use `query({search_query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results
+  ranked by relevance.
 - When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
 - For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
 
@@ -387,7 +362,7 @@ This project is indexed by GitNexus as **forgecode** (14157 symbols, 33288 relat
 ### Resources
 
 | Resource | Use for |
-|----------|---------|
+|---|---|
 | `gitnexus://repo/forgecode/context` | Codebase overview, check index freshness |
 | `gitnexus://repo/forgecode/clusters` | All functional areas |
 | `gitnexus://repo/forgecode/processes` | All execution flows |
@@ -396,7 +371,7 @@ This project is indexed by GitNexus as **forgecode** (14157 symbols, 33288 relat
 ### CLI
 
 | Task | Read this skill file |
-|------|---------------------|
+|---|---|
 | Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
 | Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
 | Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
