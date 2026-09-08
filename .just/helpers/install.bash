@@ -53,7 +53,7 @@ install_release() {
   version=$(app_version)
   printf 'building %s release, APP_VERSION=%s\n' "$PKGNAME" "$version"
 
-  APP_VERSION="$version" cargo install --path "crates/$MAIN_CRATE" --force --root "$HOME/.cargo" ||
+  APP_VERSION="$version" cargo install --locked --path "crates/$MAIN_CRATE" --force --root "$HOME/.cargo" ||
     just_die 'cargo install failed'
 
   local bin_path="$BIN_DIR/$PKGNAME"
