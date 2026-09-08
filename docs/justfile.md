@@ -80,7 +80,7 @@ Machine-readable form: `just --dump --dump-format json`.
 | `clean-indexes` | – | Move the local AI index dirs to Trash (recoverable). Asks first. |
 | `clean-report` | – | Show what each cleanable location costs, in bytes on disk. Read-only. |
 | `clean-stale` | – | Drop incremental-compilation caches and stale profile dirs, keep the rest. |
-| `rebuild` | – | Remove all build artifacts, then rebuild the forge binary from scratch. |
+| `rebuild-clean` | – | Remove all build artifacts, then rebuild the forge binary from scratch. |
 
 ## lint
 
@@ -206,7 +206,7 @@ install-both <- install, install-debug
 lint <- fmt-check, clippy, clippy-strict, shellcheck, rumdl, typos
 list-porcelain <- build
 pre-push <- fmt-check, check, clippy
-rebuild <- clean, build
+rebuild-clean <- clean, build
 reinstall <- install
 reinstall-both <- install-both
 reinstall-clean <- clean, install

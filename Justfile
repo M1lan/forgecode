@@ -551,7 +551,7 @@ clean:
 
 # Remove all build artifacts, then rebuild the forge binary from scratch.
 [group('clean')]
-rebuild: clean build
+rebuild-clean: clean build
 
 # Drop incremental-compilation caches and stale profile dirs, keep the rest.
 [group('clean')]
