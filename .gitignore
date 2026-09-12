@@ -76,3 +76,11 @@ pnpm-workspace.yaml
 .opencode/
 .windsurf/
 .github/copilot-instructions.md
+
+# agent runtime state (sessions, caches, logs, browser history)
+.omc/
+.omx/
+.claude/
+.lp-agent.zon
+.lp-history
+.claude/settings.local.json
