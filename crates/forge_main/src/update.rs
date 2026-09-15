@@ -69,6 +69,19 @@ fn should_check_for_updates(frequency: &UpdateFrequency) -> bool {
     !matches!(frequency, UpdateFrequency::Never)
 }
 
+/// Returns true only for a published release version (`MAJOR.MINOR.PATCH`,
+/// digits and dots only). Pre-release suffixes, `git describe` output and the
+/// `0.1.0-dev` fallback from `build.rs` are local builds.
+fn is_release_version(version: &str) -> bool {
+    let mut parts = version.split('.');
+    let numeric =
+        |s: Option<&str>| s.is_some_and(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
+    numeric(parts.next())
+        && numeric(parts.next())
+        && numeric(parts.next())
+        && parts.next().is_none()
+}
+
 /// Checks if there is an update available
 pub async fn on_update(api: Arc<impl API>, update: Option<&Update>) {
     let update = update.cloned().unwrap_or_default();
@@ -80,10 +93,13 @@ pub async fn on_update(api: Arc<impl API>, update: Option<&Update>) {
 
     let auto_update = update.auto_update.unwrap_or_default();
 
-    // Check if version is development version, in which case we skip the update
-    // check
-    if VERSION.contains("dev") || VERSION == "0.1.0" {
-        // Skip update for development version 0.1.0
+    // Skip the update check for development builds. A release build carries a
+    // plain `MAJOR.MINOR.PATCH` version; anything else (`0.1.0-dev`, the
+    // `git describe` form `2.13.21-104-gb0e3b5625`) is a local build. Semver
+    // orders such pre-release strings below the release they are based on, so
+    // without this guard the installer would run on every launch and replace a
+    // locally built binary with the published release.
+    if !is_release_version(VERSION) {
         return;
     }
 
@@ -118,5 +134,20 @@ mod tests {
 
         let expected = false;
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_is_release_version_accepts_plain_release() {
+        assert!(is_release_version("2.13.21"));
+        assert!(is_release_version("0.1.0"));
+    }
+
+    #[test]
+    fn test_is_release_version_rejects_local_builds() {
+        assert!(!is_release_version("0.1.0-dev"));
+        assert!(!is_release_version("2.13.21-104-gb0e3b5625"));
+        assert!(!is_release_version("2.13.21-rc1"));
+        assert!(!is_release_version("2.13"));
+        assert!(!is_release_version("v2.13.21"));
     }
 }
