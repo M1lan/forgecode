@@ -578,6 +578,26 @@ impl<
         // Merge inline configs from ForgeConfig (forge.toml `providers` field)
         configs.merge(ProviderConfigs(self.get_config_provider_configs()));
 
+        // Optional base-URL override for the claude_code provider.
+        //
+        // When CLAUDE_CODE_BASE_URL is set (e.g. to a local compression proxy),
+        // route claude_code traffic to `<CLAUDE_CODE_BASE_URL>/v1/messages`
+        // instead of the hardcoded Anthropic endpoint (mirroring the common
+        // ANTHROPIC_BASE_URL convention of pointing at the protocol root).
+        // Auth (subscription/OAuth) and the hardcoded model catalog are
+        // unchanged. When the variable is unset, behavior is byte-identical to
+        // the default configuration.
+        if let Some(base) = self.infra.get_env_var("CLAUDE_CODE_BASE_URL") {
+            let base = base.trim_end_matches('/');
+            if !base.is_empty() {
+                for config in &mut configs.0 {
+                    if config.id == ProviderId::CLAUDE_CODE {
+                        config.url = format!("{base}/v1/messages");
+                    }
+                }
+            }
+        }
+
         configs.0
     }
 
@@ -2216,6 +2236,110 @@ mod env_tests {
                 .url_params
                 .contains_key(&URLParam::from("VLLM_PORT".to_string())),
             "VLLM_PORT should be absent from credential when not provided"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_claude_code_url_override_set() {
+        let mut env_vars = HashMap::new();
+        env_vars.insert(
+            "CLAUDE_CODE_BASE_URL".to_string(),
+            "http://127.0.0.1:8787".to_string(),
+        );
+
+        let infra = Arc::new(MockInfra::new(env_vars));
+        let registry = ForgeProviderRepository::new(infra);
+
+        let configs = registry.get_merged_configs().await;
+        let config = configs
+            .iter()
+            .find(|c| c.id == ProviderId::CLAUDE_CODE)
+            .expect("claude_code config should exist");
+
+        assert_eq!(config.url.as_str(), "http://127.0.0.1:8787/v1/messages");
+    }
+
+    #[tokio::test]
+    async fn test_claude_code_url_override_trailing_slash() {
+        let mut env_vars = HashMap::new();
+        env_vars.insert(
+            "CLAUDE_CODE_BASE_URL".to_string(),
+            "http://127.0.0.1:8787/".to_string(),
+        );
+
+        let infra = Arc::new(MockInfra::new(env_vars));
+        let registry = ForgeProviderRepository::new(infra);
+
+        let configs = registry.get_merged_configs().await;
+        let config = configs
+            .iter()
+            .find(|c| c.id == ProviderId::CLAUDE_CODE)
+            .expect("claude_code config should exist");
+
+        assert_eq!(config.url.as_str(), "http://127.0.0.1:8787/v1/messages");
+    }
+
+    #[tokio::test]
+    async fn test_claude_code_url_override_unset_default_unchanged() {
+        let infra = Arc::new(MockInfra::new(HashMap::new()));
+        let registry = ForgeProviderRepository::new(infra);
+
+        let configs = registry.get_merged_configs().await;
+        let config = configs
+            .iter()
+            .find(|c| c.id == ProviderId::CLAUDE_CODE)
+            .expect("claude_code config should exist");
+
+        assert_eq!(config.url.as_str(), "https://api.anthropic.com/v1/messages");
+
+        // Other anthropic-family providers must not be touched.
+        let anthropic = configs
+            .iter()
+            .find(|c| c.id == ProviderId::ANTHROPIC)
+            .expect("anthropic config should exist");
+        assert_eq!(
+            anthropic.url.as_str(),
+            "https://api.anthropic.com/v1/messages"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_claude_code_url_override_empty_ignored() {
+        let mut env_vars = HashMap::new();
+        env_vars.insert("CLAUDE_CODE_BASE_URL".to_string(), "".to_string());
+
+        let infra = Arc::new(MockInfra::new(env_vars));
+        let registry = ForgeProviderRepository::new(infra);
+
+        let configs = registry.get_merged_configs().await;
+        let config = configs
+            .iter()
+            .find(|c| c.id == ProviderId::CLAUDE_CODE)
+            .expect("claude_code config should exist");
+
+        assert_eq!(config.url.as_str(), "https://api.anthropic.com/v1/messages");
+    }
+
+    #[tokio::test]
+    async fn test_claude_code_url_override_does_not_touch_other_providers() {
+        let mut env_vars = HashMap::new();
+        env_vars.insert(
+            "CLAUDE_CODE_BASE_URL".to_string(),
+            "http://127.0.0.1:8787".to_string(),
+        );
+
+        let infra = Arc::new(MockInfra::new(env_vars));
+        let registry = ForgeProviderRepository::new(infra);
+
+        let configs = registry.get_merged_configs().await;
+        let anthropic = configs
+            .iter()
+            .find(|c| c.id == ProviderId::ANTHROPIC)
+            .expect("anthropic config should exist");
+
+        assert_eq!(
+            anthropic.url.as_str(),
+            "https://api.anthropic.com/v1/messages"
         );
     }
 }
