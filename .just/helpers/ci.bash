@@ -48,7 +48,9 @@ step() { # <label> <command...>
 }
 
 nightly_fmt() {
-  PATH="$(rustup run nightly rustc --print sysroot)/bin:$PATH" cargo fmt --all "$@"
+  local rustfmt
+  rustfmt=$(nightly_rustfmt_bin) || just_die "no nightly rustfmt -- $(tool_hint rustfmt)"
+  RUSTFMT=$rustfmt cargo fmt --all "$@"
 }
 
 # WHICH FILES MAY A FIXER TOUCH?

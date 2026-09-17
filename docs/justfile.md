@@ -90,7 +90,7 @@ Machine-readable form: `just --dump --dump-format json`.
 | `clippy-fix` | – | Apply clippy's machine-applicable fixes. |
 | `clippy-strict` | – | The string-safety lane CI runs and this Justfile never did. |
 | `fix` | – | Everything that writes: format, clippy fixes. |
-| `fmt` | – | Format Rust with the NIGHTLY rustfmt (.rustfmt.toml uses unstable options). |
+| `fmt` | – | Format Rust with the NIGHTLY rustfmt (.rustfmt.toml uses unstable options); rustup on PATH or the sidecar rustup, see tools.bash. |
 | `fmt-check` | – | Verify formatting without writing. |
 | `lint` | – | Everything that only reads: format check, clippy, shell, markdown, spelling. |
 | `rumdl` | – | Markdown lint. |

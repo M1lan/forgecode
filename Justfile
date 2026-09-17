@@ -239,17 +239,17 @@ node-install:
 
 # --- Lint & Format ---
 
-# Format Rust with the NIGHTLY rustfmt (.rustfmt.toml uses unstable options).
+# Format Rust with the NIGHTLY rustfmt (.rustfmt.toml uses unstable options); rustup on PATH or the sidecar rustup, see tools.bash.
 [group('lint')]
 fmt:
     @'{{ tools }}' need rustfmt
-    PATH="$(rustup run nightly rustc --print sysroot)/bin:$PATH" cargo fmt --all
+    RUSTFMT="$('{{ tools }}' rustfmt-bin)" cargo fmt --all
 
 # Verify formatting without writing.
 [group('lint')]
 fmt-check:
     @'{{ tools }}' need rustfmt
-    PATH="$(rustup run nightly rustc --print sysroot)/bin:$PATH" cargo fmt --all -- --check
+    RUSTFMT="$('{{ tools }}' rustfmt-bin)" cargo fmt --all -- --check
 
 # Clippy, warnings denied. Matches what CI's autofix lane compiles.
 [group('lint')]

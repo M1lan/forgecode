@@ -73,11 +73,12 @@ confirm() {
 
 # Trash, never rm. Only paths inside the repo are ever passed here.
 to_trash() {
-  local p
+  local p cmd
   tools_need trash || return 1
+  read -r -a cmd <<< "$(trash_cmd)"
   for p in "$@"; do
     [[ -e $p ]] || continue
-    trash -- "$p" && printf '  trashed %s\n' "$p"
+    "${cmd[@]}" -- "$p" && printf '  trashed %s\n' "$p"
   done
 }
 
