@@ -1021,7 +1021,8 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         let fixture = generate_plugin(crate::zsh::ShellKind::Fish).unwrap();
-        // Non-empty, contains the fish accept-line widget and fish-syntax sentinel.
+        // Non-empty, contains the fish accept-line widget and fish-syntax
+        // sentinel.
         let actual = !fixture.is_empty()
             && fixture.contains("_forge_accept_line")
             && fixture.contains("_forge_action_default")
@@ -1052,7 +1053,8 @@ mod tests {
         let original_home = std::env::var("HOME").ok();
         let original_zdotdir = std::env::var("ZDOTDIR").ok();
 
-        // SAFETY: We hold ENV_LOCK to prevent concurrent environment modifications
+        // SAFETY: We hold ENV_LOCK to prevent concurrent environment
+        // modifications
         unsafe {
             std::env::set_var("HOME", temp_dir.path());
             std::env::remove_var("ZDOTDIR");
@@ -1061,7 +1063,8 @@ mod tests {
         let actual = setup_integration(crate::zsh::ShellKind::Bash, false, None);
 
         // Restore environment first
-        // SAFETY: We hold ENV_LOCK to prevent concurrent environment modifications
+        // SAFETY: We hold ENV_LOCK to prevent concurrent environment
+        // modifications
         unsafe {
             if let Some(home) = original_home {
                 std::env::set_var("HOME", home);

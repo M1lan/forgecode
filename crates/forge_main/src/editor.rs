@@ -65,9 +65,10 @@ impl ForgeEditor {
             KeyEvent(KeyCode::Enter, Modifiers::ALT),
             EventHandler::Simple(Cmd::Newline),
         );
-        // NB: do NOT rebind C-k. rustyline's Emacs default is kill-to-end-of-line;
-        // an earlier ClearScreen rebinding broke standard readline editing. Screen
-        // clearing stays on its default C-l.
+        // NB: do NOT rebind C-k. rustyline's Emacs default is
+        // kill-to-end-of-line; an earlier ClearScreen rebinding broke
+        // standard readline editing. Screen clearing stays on its
+        // default C-l.
         editor.set_helper(Some(helper));
         let _ = editor.load_history(&history_file);
         Self { editor, history_file, pending_buffer: None }

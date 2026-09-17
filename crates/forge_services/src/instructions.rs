@@ -91,9 +91,10 @@ impl<F: EnvironmentInfra + FileReaderInfra + CommandInfra> ForgeCustomInstructio
     async fn init(&self) -> Vec<String> {
         let paths = self.discover_agents_files().await;
 
-        // Path sourced from FORGE_EXTRA_INSTRUCTIONS_PATH, if any. Used to apply a
-        // size cap and path-only observability to that source specifically,
-        // without changing behavior of the base/git/cwd sources.
+        // Path sourced from FORGE_EXTRA_INSTRUCTIONS_PATH, if any. Used to
+        // apply a size cap and path-only observability to that source
+        // specifically, without changing behavior of the base/git/cwd
+        // sources.
         let extra_path = self
             .infra
             .get_env_var(EXTRA_INSTRUCTIONS_ENV)
