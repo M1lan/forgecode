@@ -1,7 +1,7 @@
 # Fork Differences: `mymain` vs upstream `main`
 
 This document describes how the local development branch `mymain` diverges
-from upstream [`antinomyhq/forgecode`](https://github.com/antinomyhq/forgecode)
+from upstream [`tailcallhq/forgecode`](https://github.com/tailcallhq/forgecode) (formerly `antinomyhq`)
 `main`, and why.
 
 It deliberately describes *categories* of divergence rather than exact

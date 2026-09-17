@@ -453,9 +453,9 @@ install-audit:
 
 # --- Upstream (fork maintenance) ---
 
-# Merge, never rebase: this fork carries 56+ commits on mymain and a linked
-# worktree. A rebase rewrites every one of those SHAs, breaks the worktree
-# and forces a push. The old `rebase` recipe did exactly that, and aimed at
+# Merge, never rebase: this fork carries 72 commits on mymain (2026-09-17).
+# A rebase rewrites every one of those SHAs, forces a push to origin/mymain
+# and invalidates the merge bases of the side branches. The old `rebase` recipe did exactly that, and aimed at
 # `main` (the upstream line) while the default branch is `mymain`.
 
 # Fetch upstream, fast-forward local main, then MERGE it into this branch.

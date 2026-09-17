@@ -1088,7 +1088,7 @@ MCP tools can be used as part of multi-agent workflows, allowing specialized age
 
 ## Fork Notes (`mymain` vs `main`)
 
-This repository is a fork. The default working branch is **`mymain`**, which is a strict superset of upstream **`main`** (`antinomyhq/forgecode`): there are **zero** commits upstream that
+This repository is a fork. The default working branch is **`mymain`**, which is a strict superset of upstream **`main`** (`tailcallhq/forgecode`, formerly `antinomyhq`): after each `just sync-upstream` there are **zero** commits upstream that
 are not in `mymain`. What `mymain` adds:
 
 - `Justfile` and `.just/helpers/` -- the developer task runner. One gate: `just ci`.

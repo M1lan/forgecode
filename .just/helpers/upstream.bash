@@ -9,12 +9,13 @@
 #
 # This checkout is a fork: `origin` is the operator's fork, `upstream` is the
 # project it was forked from. Local `main` tracks upstream/main and is a pure
-# mirror; the work lives on `mymain`, which carried 56 commits at the time
-# this was written, and there is a second linked worktree on another branch.
+# mirror; the work lives on `mymain`, which carried 56 commits when this was
+# written and 72 on 2026-09-17. The linked worktree that existed in August
+# 2026 is gone; the remaining reasons below still hold.
 #
-# Rebasing mymain onto main would rewrite all 56 SHAs. That invalidates the
-# linked worktree, requires a force-push to origin, and destroys the merge
-# bases of every other local branch. The old `rebase` recipe did exactly
+# Rebasing mymain onto main would rewrite every fork SHA. That requires a
+# force-push to origin, and destroys the merge bases of every other local
+# branch. The old `rebase` recipe did exactly
 # that -- and worse, it targeted `main`, the upstream line, while the default
 # branch is `mymain`.
 #

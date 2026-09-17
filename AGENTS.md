@@ -153,7 +153,7 @@ directly: the recipe passes `--skip-agents-md --skip-skills`, and without those 
 This checkout is a fork. `origin` is the fork; `upstream` is the project it was forked from. Local `main` is a pure mirror of `upstream/main`; the work
 lives on `mymain`.
 
-**Never rebase `mymain`.** It carries 56+ commits and there is a linked worktree; a rebase rewrites every SHA, breaks the worktree and forces a push.
+**Never rebase `mymain` by hand.** It carries 72 fork commits (2026-09-17, no linked worktree any more); a rebase rewrites every SHA, forces a push to `origin/mymain` and invalidates the merge bases of the side branches.
 Use `just sync-upstream`, which fast-forwards the mirror and merges. `just upstream-status` shows what would land, read-only.
 
 `.github/workflows/` is **fork-owned and hand-written**, and holds exactly one minimal build-and-test workflow. Upstream generates seven from
