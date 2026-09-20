@@ -594,6 +594,86 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
+    /// What both the tick and `pause` write to reset the line.
+    const CLEAR_LINE: &[u8] = b"\r\x1b[2K";
+
+    /// A printer that holds a paint for as long as a caller asks, and announces
+    /// when that paint began. It lets a test place `pause` inside the window
+    /// where a tick has already started writing.
+    #[derive(Clone)]
+    struct SlowPrinter {
+        writes: Arc<std::sync::Mutex<Vec<Vec<u8>>>>,
+        paint_started: std::sync::mpsc::Sender<()>,
+        paint_duration: Duration,
+    }
+
+    impl SlowPrinter {
+        fn new(paint_duration: Duration) -> (Self, std::sync::mpsc::Receiver<()>) {
+            let (paint_started, paints) = std::sync::mpsc::channel();
+            let fixture = Self {
+                writes: Arc::new(std::sync::Mutex::new(Vec::new())),
+                paint_started,
+                paint_duration,
+            };
+            (fixture, paints)
+        }
+
+        fn err_writes(&self) -> Vec<Vec<u8>> {
+            self.writes.lock().unwrap().clone()
+        }
+    }
+
+    impl ConsoleWriter for SlowPrinter {
+        fn write(&self, buf: &[u8]) -> std::io::Result<usize> {
+            Ok(buf.len())
+        }
+
+        fn write_err(&self, buf: &[u8]) -> std::io::Result<usize> {
+            // Only a spinner line is slow; the bare clear stays fast, so the
+            // order the test asserts is the order the two threads produced.
+            if buf.len() > CLEAR_LINE.len() {
+                let _ = self.paint_started.send(());
+                std::thread::sleep(self.paint_duration);
+            }
+            self.writes.lock().unwrap().push(buf.to_vec());
+            Ok(buf.len())
+        }
+
+        fn flush(&self) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn flush_err(&self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Reproduces the original race: `pause` is called while a tick is already
+    /// inside its write, which is the interleaving that wiped streamed output.
+    ///
+    /// Without the paint lock the pause clears the line immediately and the
+    /// tick finishes afterwards, so the spinner line is the last thing on
+    /// the line the caller is about to print on. Holding the lock across
+    /// the tick's write makes the clear last again.
+    #[test]
+    fn test_spinner_pause_waits_out_a_tick_already_painting() {
+        let (printer, paints) = SlowPrinter::new(Duration::from_millis(TICK_DURATION_MS * 4));
+        let mut fixture = SpinnerManager::new(Arc::new(printer.clone()));
+
+        fixture.start(Some("Thinking")).unwrap();
+        paints.recv().unwrap();
+        fixture.pause();
+        // Outlast the in-flight paint, so a tick that pause failed to wait out
+        // has landed by the time the writes are read.
+        std::thread::sleep(Duration::from_millis(TICK_DURATION_MS * 8));
+        let writes = printer.err_writes();
+        fixture.stop(None).unwrap();
+
+        let actual = writes.last().cloned();
+        let expected = Some(CLEAR_LINE.to_vec());
+        assert_eq!(actual, expected);
+    }
+
     /// The last thing a pause writes is the line clear, so the caller's content
     /// starts on an empty line.
     #[test]
