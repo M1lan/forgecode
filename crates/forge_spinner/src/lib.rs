@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -68,6 +68,15 @@ fn styled_loader_line(
 struct ActiveSpinner<P: ConsoleWriter> {
     stop: Arc<AtomicBool>,
     paused: Arc<AtomicBool>,
+    /// Held across the tick thread's check-and-write, and taken by `pause`
+    /// before it clears the line.
+    ///
+    /// Without it, `paused` alone is a check-then-act race: the tick thread can
+    /// pass its `!paused` check, be preempted while the writer pauses the
+    /// spinner and prints a chunk of content that does not end in a newline,
+    /// then resume and emit `\r\x1b[2K`, erasing the line that content just
+    /// landed on. That is the "output cut off mid-reply" symptom.
+    paint: Arc<Mutex<()>>,
     handle: Option<JoinHandle<()>>,
     started_at: Instant,
     accumulated_elapsed: Duration,
@@ -78,8 +87,10 @@ impl<P: ConsoleWriter + 'static> ActiveSpinner<P> {
     fn start(printer: Arc<P>, accumulated_elapsed: Duration, message: String) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let paused = Arc::new(AtomicBool::new(false));
+        let paint = Arc::new(Mutex::new(()));
         let stop_signal = Arc::clone(&stop);
         let paused_signal = Arc::clone(&paused);
+        let paint_signal = Arc::clone(&paint);
         let thread_printer = Arc::clone(&printer);
         let started_at = Instant::now();
 
@@ -100,9 +111,17 @@ impl<P: ConsoleWriter + 'static> ActiveSpinner<P> {
                 let tick = TICKS.get(tick_index).unwrap_or(&"⠋");
                 let line = styled_loader_line(tick, &message, elapsed, terminal_width());
 
-                if !stop_signal.load(Ordering::Acquire) && !paused_signal.load(Ordering::Acquire) {
-                    let _ = thread_printer.write_err(format!("\r\x1b[2K{line}").as_bytes());
-                    let _ = thread_printer.flush_err();
+                {
+                    // Re-check both flags under the paint lock: a pause that
+                    // started after the checks above must not have its
+                    // clear_line overwritten by this tick.
+                    let _paint = paint_signal.lock().unwrap_or_else(|e| e.into_inner());
+                    if !stop_signal.load(Ordering::Acquire)
+                        && !paused_signal.load(Ordering::Acquire)
+                    {
+                        let _ = thread_printer.write_err(format!("\r\x1b[2K{line}").as_bytes());
+                        let _ = thread_printer.flush_err();
+                    }
                 }
 
                 thread::park_timeout(Duration::from_millis(TICK_DURATION_MS));
@@ -112,6 +131,7 @@ impl<P: ConsoleWriter + 'static> ActiveSpinner<P> {
         Self {
             stop,
             paused,
+            paint,
             handle: Some(handle),
             started_at,
             accumulated_elapsed,
@@ -128,6 +148,10 @@ impl<P: ConsoleWriter> ActiveSpinner<P> {
     fn pause(&self) {
         let was_paused = self.paused.swap(true, Ordering::AcqRel);
         if !was_paused {
+            // Taking the paint lock waits out a tick that already passed its
+            // flag checks, so the clear below is the last write to the line
+            // before the caller prints content on it.
+            let _paint = self.paint.lock().unwrap_or_else(|e| e.into_inner());
             self.clear_line();
         }
         if let Some(handle) = &self.handle {
@@ -401,7 +425,7 @@ mod tests {
     use forge_domain::ConsoleWriter;
     use pretty_assertions::assert_eq;
 
-    use super::{SpinnerManager, format_elapsed_time};
+    use super::{SpinnerManager, TICK_DURATION_MS, format_elapsed_time};
 
     /// A simple printer that writes directly to stdout/stderr.
     /// Used for testing when synchronized output is not needed.
@@ -511,6 +535,80 @@ mod tests {
         fixture_spinner.stop(None).unwrap();
 
         let expected = (Some(true), Some(true));
+        assert_eq!(actual, expected);
+    }
+
+    /// A printer that records every byte written to the error stream, so a
+    /// test can assert what the spinner painted and when.
+    #[derive(Clone, Default)]
+    struct RecordingPrinter(Arc<std::sync::Mutex<Vec<Vec<u8>>>>);
+
+    impl RecordingPrinter {
+        fn err_writes(&self) -> Vec<Vec<u8>> {
+            self.0.lock().unwrap().clone()
+        }
+    }
+
+    impl ConsoleWriter for RecordingPrinter {
+        fn write(&self, buf: &[u8]) -> std::io::Result<usize> {
+            Ok(buf.len())
+        }
+
+        fn write_err(&self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().push(buf.to_vec());
+            Ok(buf.len())
+        }
+
+        fn flush(&self) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn flush_err(&self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// A paused spinner must not paint again until it is resumed.
+    ///
+    /// The writer pauses the spinner, then prints streamed content that often
+    /// does not end in a newline. Any tick landing after that pause emits
+    /// `\r\x1b[2K` and wipes the line the content is sitting on, which is what
+    /// made long replies appear truncated. This asserts the invariant that
+    /// closes that window; it cannot force the interleaving that used to break
+    /// it, so it guards the fix rather than reproducing the original race.
+    #[test]
+    fn test_spinner_paints_nothing_after_pause() {
+        let printer = RecordingPrinter::default();
+        let mut fixture = SpinnerManager::new(Arc::new(printer.clone()));
+
+        fixture.start(Some("Thinking")).unwrap();
+        std::thread::sleep(Duration::from_millis(TICK_DURATION_MS * 3));
+        fixture.pause();
+        let after_pause = printer.err_writes().len();
+
+        std::thread::sleep(Duration::from_millis(TICK_DURATION_MS * 5));
+        let actual = printer.err_writes().len();
+        fixture.stop(None).unwrap();
+
+        let expected = after_pause;
+        assert_eq!(actual, expected);
+    }
+
+    /// The last thing a pause writes is the line clear, so the caller's content
+    /// starts on an empty line.
+    #[test]
+    fn test_spinner_pause_clears_the_line_last() {
+        let printer = RecordingPrinter::default();
+        let mut fixture = SpinnerManager::new(Arc::new(printer.clone()));
+
+        fixture.start(Some("Thinking")).unwrap();
+        std::thread::sleep(Duration::from_millis(TICK_DURATION_MS * 3));
+        fixture.pause();
+        let writes = printer.err_writes();
+        fixture.stop(None).unwrap();
+
+        let actual = writes.last().cloned();
+        let expected = Some(b"\r\x1b[2K".to_vec());
         assert_eq!(actual, expected);
     }
 
