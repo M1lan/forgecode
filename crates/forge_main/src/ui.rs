@@ -38,6 +38,7 @@ use crate::conversation_selector::ConversationSelector;
 use crate::display_constants::{CommandType, headers, markers, status};
 use crate::editor::ReadLineError;
 use crate::error::UIError;
+use crate::herdr::{self, WorkingGuard};
 use crate::info::Info;
 use crate::input::{CominInput, Console, JsonInput, UserInput};
 use crate::model::{AppCommand, ForgeCommandManager};
@@ -397,6 +398,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
     }
 
     pub async fn run(&mut self) {
+        herdr::announce();
         match self.run_inner().await {
             Ok(_) => {}
             Err(error) => {
@@ -414,6 +416,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                     self.writeln_to_stderr(TitleFormat::error(error_message).display().to_string());
             }
         }
+        herdr::release();
     }
 
     async fn run_inner(&mut self) -> Result<()> {
@@ -4092,6 +4095,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
     }
 
     async fn on_message(&mut self, content: Option<String>) -> Result<()> {
+        let _guard = WorkingGuard::new();
         let conversation_id = self.init_conversation().await?;
 
         if self.config.auto_install_vscode_extension {

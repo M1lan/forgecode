@@ -6,6 +6,7 @@ mod display_constants;
 mod editor;
 mod error;
 mod frontend;
+pub mod herdr;
 mod highlighter;
 mod info;
 mod input;
