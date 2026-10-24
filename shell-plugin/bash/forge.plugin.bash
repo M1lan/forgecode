@@ -453,8 +453,18 @@ forge-accept-line() {
     ask)  user_action="sage" ;;
     plan) user_action="muse" ;;
   esac
-  _forge_osc133_emit "B"; _forge_osc133_emit "C"
-  printf '\n'
+  _forge_osc133_emit "B"
+  # Readline clears visible input before this widget runs. Replay it as input.
+  # Taller-than-screen input can retain a scrolled prefix before this replay;
+  # that prefix may appear twice, but the original input is dispatched once.
+  local display_check="${original_buffer//$'\n'/}"
+  display_check="${display_check//$'\t'/}"
+  if [[ $display_check == *[[:cntrl:]]* ]]; then
+    printf '%q\n' "$original_buffer"
+  else
+    printf '%s\n' "$original_buffer"
+  fi
+  _forge_osc133_emit "C"
   local action_status=0
   case "$user_action" in
     new|n)                                _forge_action_new "$input_text" ;;
