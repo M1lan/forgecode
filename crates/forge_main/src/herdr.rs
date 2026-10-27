@@ -19,8 +19,29 @@ use std::sync::atomic::{AtomicU64, Ordering};
 const METHOD_REPORT: &str = "pane.report_agent";
 const METHOD_RELEASE: &str = "pane.release_agent";
 
-/// Monotonic counter for JSON-RPC id / seq ordering.
+/// Last seq handed out by this process.
 static SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Next report seq: epoch milliseconds, strictly increasing within this
+/// process.
+///
+/// Herdr drops a report whose seq is not above the last seq it saw for the
+/// same pane and source, and it keeps that value across processes. A
+/// per-process counter starting at 0 therefore loses the startup announce
+/// whenever an earlier `forge` run in the same pane (for example
+/// `forge bash plugin` from `.bashrc`) already sent seq 1.
+fn next_seq() -> u64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let prev = SEQ
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |last| {
+            Some(now.max(last + 1))
+        })
+        .unwrap_or(0);
+    now.max(prev + 1)
+}
 
 /// Best-effort JSON-RPC notification over the Herdr Unix socket.
 ///
@@ -40,7 +61,7 @@ fn herdr_notify(
     let Ok(socket) = std::env::var("HERDR_SOCKET_PATH") else {
         return;
     };
-    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let seq = next_seq();
 
     let request = serde_json::json!({
         "id": format!("forge:{method}:{seq}"),
@@ -149,5 +170,18 @@ mod tests {
         // Must be a no-op (not panic) when Herdr env vars are absent.
         report("idle", None);
         release();
+    }
+
+    #[test]
+    fn test_next_seq_increases_above_epoch_millis() {
+        let fixture = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        let first = next_seq();
+        let second = next_seq();
+        let actual = (first >= fixture, second > first);
+        let expected = (true, true);
+        pretty_assertions::assert_eq!(actual, expected);
     }
 }
