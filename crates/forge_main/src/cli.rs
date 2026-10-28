@@ -172,6 +172,16 @@ impl Cli {
     pub fn is_interactive(&self) -> bool {
         self.prompt.is_none() && self.piped_input.is_none() && self.subcommands.is_none()
     }
+
+    /// Determines whether this invocation runs an agent session.
+    ///
+    /// A session owns the terminal for its lifetime, so it may also claim the
+    /// Herdr pane. Subcommands — `forge bash plugin` runs in every pane, and
+    /// `forge cmd execute` or `forge conversation retry` run a single turn —
+    /// do not own it and must not report against it.
+    pub fn is_session(&self) -> bool {
+        self.subcommands.is_none()
+    }
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -2233,6 +2243,26 @@ mod tests {
     fn test_unstable_flag_default_false() {
         let fixture = Cli::parse_from(["forge"]);
         assert_eq!(fixture.unstable, false);
+    }
+
+    #[test]
+    fn test_is_session_gate() {
+        // Sessions own the pane; subcommands and helper turns never do.
+        let retry_id = ConversationId::generate().to_string();
+        let retry_args = ["forge", "conversation", "retry", retry_id.as_str()];
+        let cases = [
+            (vec!["forge"], true),
+            (vec!["forge", "-p", "hello"], true),
+            (vec!["forge", "bash", "plugin"], false),
+            (vec!["forge", "cmd", "execute", "my-command"], false),
+            (retry_args.to_vec(), false),
+        ];
+        let actual: Vec<bool> = cases
+            .iter()
+            .map(|(args, _)| Cli::parse_from(args.iter().copied()).is_session())
+            .collect();
+        let expected = vec![true, true, false, false, false];
+        assert_eq!(actual, expected);
     }
 
     #[test]

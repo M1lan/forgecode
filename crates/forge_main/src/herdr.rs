@@ -140,24 +140,33 @@ pub fn release() {
 }
 
 /// Reports `working` on creation and `idle` on drop (all return paths).
-pub struct WorkingGuard;
+///
+/// An inactive guard is a no-op: only a real session owns the Herdr pane, so a
+/// subcommand such as `forge cmd execute` must not report for it.
+pub struct WorkingGuard {
+    active: bool,
+}
 
 impl WorkingGuard {
-    pub fn new() -> Self {
-        herdr_notify(METHOD_REPORT, Some("working"), None, None, false);
-        Self
+    pub fn new(active: bool) -> Self {
+        if active {
+            herdr_notify(METHOD_REPORT, Some("working"), None, None, false);
+        }
+        Self { active }
     }
 }
 
 impl Default for WorkingGuard {
     fn default() -> Self {
-        Self::new()
+        Self::new(true)
     }
 }
 
 impl Drop for WorkingGuard {
     fn drop(&mut self) {
-        herdr_notify(METHOD_REPORT, Some("idle"), None, None, false);
+        if self.active {
+            herdr_notify(METHOD_REPORT, Some("idle"), None, None, false);
+        }
     }
 }
 

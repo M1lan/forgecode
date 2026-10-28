@@ -398,7 +398,13 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
     }
 
     pub async fn run(&mut self) {
-        herdr::announce();
+        // Only a session owns the Herdr pane. Subcommands run in every pane
+        // from `.bashrc` (`forge bash plugin`), or run a single helper turn,
+        // and must not claim a pane that belongs to another agent.
+        let session = self.cli.is_session();
+        if session {
+            herdr::announce();
+        }
         match self.run_inner().await {
             Ok(_) => {}
             Err(error) => {
@@ -416,7 +422,9 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                     self.writeln_to_stderr(TitleFormat::error(error_message).display().to_string());
             }
         }
-        herdr::release();
+        if session {
+            herdr::release();
+        }
     }
 
     async fn run_inner(&mut self) -> Result<()> {
@@ -1044,7 +1052,8 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
 
                 self.state.conversation_id = Some(id);
                 self.writeln_title(TitleFormat::info(format!("Resumed conversation: {id}")))?;
-                // Interactive mode will be handled by the main loop
+                // No prompt follows: `run_inner` returns right after the
+                // subcommand dispatch.
             }
             ConversationCommand::Show { id, md } => {
                 let conversation = self.validate_conversation_exists(&id).await?;
@@ -4095,7 +4104,9 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
     }
 
     async fn on_message(&mut self, content: Option<String>) -> Result<()> {
-        let _guard = WorkingGuard::new();
+        // Subcommands such as `forge cmd execute` and `forge conversation
+        // retry` run a turn without owning the pane, so they stay silent.
+        let _guard = WorkingGuard::new(self.cli.is_session());
         let conversation_id = self.init_conversation().await?;
 
         if self.config.auto_install_vscode_extension {
