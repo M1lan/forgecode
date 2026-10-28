@@ -45,10 +45,10 @@ builtin = "gitleaks"
 # This keeps `docs current` from turning a push into a repair instruction.
 [hooks.pre-commit.jobs.docs]
 run = "just docs"
-glob = ["Justfile", ".just/helpers/docs.bash"]
+glob = ["Justfile", ".just/helpers/docs.bash", ".fork.toml", "docs/justfile.md", "docs/fork-differences.md"]
 env = { LC_ALL = "C" }
-reads = ["Justfile", ".just/helpers/docs.bash"]
-writes = ["docs/justfile.md"]
+reads = ["Justfile", ".just/helpers/docs.bash", ".fork.toml"]
+writes = ["docs/justfile.md", "docs/fork-differences.md"]
 stage_fixed = true
 concurrent_safe = true
 
@@ -106,6 +106,6 @@ priority = ["gate"]
 # `just ci` by hand, look at what it fixed, and commit that.
 [hooks.pre-push.jobs.gate]
 run = "just ci-check"
-glob = ["*.rs", "Cargo.toml", "Cargo.lock", "*.bash", "*.sh", "*.zsh", "Justfile", ".just/**"]
+glob = ["*.rs", "Cargo.toml", "Cargo.lock", "*.bash", "*.sh", "*.zsh", "Justfile", ".just/**", ".fork.toml", "docs/justfile.md", "docs/fork-differences.md"]
 isolate = { tool = "cargo", target_dir = "per-worktree" }
 timeout = "20m"

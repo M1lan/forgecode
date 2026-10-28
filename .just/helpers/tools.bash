@@ -37,7 +37,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib.bash"
 #
 # pnpm, not npm: operator toolchain rule. `just eval` runs the TypeScript
 # benchmark suite and there is no npm anywhere in this system.
-TOOLS_REQUIRED=(bash just cargo rustc clippy rustfmt protoc git rg fd jq)
+TOOLS_REQUIRED=(bash just cargo rustc clippy rustfmt protoc git rg fd jq taplo)
 TOOLS_RECOMMENDED=(cargo-insta cargo-nextest shellcheck gum fzf bat pnpm rumdl typos zsh trash gitleaks)
 TOOLS_OPTIONAL=(figlet fish cargo-deny cargo-llvm-cov cargo-audit cargo-outdated
   cargo-watch cargo-machete cargo-bloat cargo-msrv betterhook diesel
@@ -50,6 +50,7 @@ declare -A TOOLS_PKG=(
   [diesel]=diesel_cli
   [betterhook]=betterhook-cli
   ['ast-grep']=ast-grep
+  [taplo]=taplo-cli
 )
 
 declare -A TOOLS_SRC=(
@@ -62,7 +63,7 @@ declare -A TOOLS_SRC=(
   ['cargo-llvm-cov']=cargo ['cargo-audit']=cargo ['cargo-outdated']=cargo
   ['cargo-watch']=cargo ['cargo-machete']=cargo ['cargo-bloat']=cargo
   ['cargo-msrv']=cargo [betterhook]=cargo [cross]=cargo [diesel]=cargo
-  [rumdl]=cargo [typos]=cargo
+  [rumdl]=cargo [typos]=cargo [taplo]=cargo
   [gitnexus]=other [codegraph]=other [grepai]=other
 )
 
@@ -101,6 +102,7 @@ declare -A TOOLS_WHY=(
   [rg]='search (never grep)'
   [fd]='file finder (never find)'
   [jq]='just --dump JSON parsing (menu, doctor, docs)'
+  [taplo]='.fork.toml -> JSON for docs/fork-differences.md -- just docs, docs-check'
   ['cargo-insta']='snapshot tests -- just test; plain cargo test is NOT equivalent'
   ['cargo-nextest']='process-per-test runner that insta drives (insta.yaml)'
   [shellcheck]='blocking shell gate over .just/helpers + cli'

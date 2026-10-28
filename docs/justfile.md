@@ -116,8 +116,8 @@ Machine-readable form: `just --dump --dump-format json`.
 
 | recipe | arguments | what it does |
 |---|---|---|
-| `docs` | – | regenerate docs/justfile.md from this file (never hand-edit that file) |
-| `docs-check` | – | fail if docs/justfile.md has drifted from this file; part of `just ci` |
+| `docs` | – | regenerate docs/justfile.md (from this file) and docs/fork-differences.md (from .fork.toml); never hand-edit either |
+| `docs-check` | – | fail if a generated doc has drifted from its source; part of `just ci` |
 | `doctor` | – | what is installed, what is missing, and the exact command to fix it |
 | `help` | – | machine/agent recipe list (parse `just --dump --dump-format json` when scripting) |
 | `info` | – | project+tool status screen (no countdown; splash variant) |

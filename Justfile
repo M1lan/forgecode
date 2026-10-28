@@ -6,7 +6,7 @@
 #   bare `just`   info splash -> menu
 #   just menu     the only interactive launcher (fzf + gum)
 #   just doctor   what is installed, what is missing, how to fix it
-#   just docs     regenerate docs/justfile.md from this file
+#   just docs     regenerate docs/justfile.md and docs/fork-differences.md
 #
 # Machine contract: `just --dump --dump-format json`. Do not scrape --list.
 #
@@ -101,12 +101,12 @@ menu:
 doctor:
     @'{{ helpers }}/doctor.bash'
 
-# regenerate docs/justfile.md from this file (never hand-edit that file)
+# regenerate docs/justfile.md (from this file) and docs/fork-differences.md (from .fork.toml); never hand-edit either
 [group('meta')]
 docs:
     @'{{ helpers }}/docs.bash' --write
 
-# fail if docs/justfile.md has drifted from this file; part of `just ci`
+# fail if a generated doc has drifted from its source; part of `just ci`
 [group('meta')]
 docs-check:
     @'{{ helpers }}/docs.bash' --check

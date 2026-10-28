@@ -69,7 +69,7 @@ nightly_fmt() {
 # So prose fixers run ONLY over paths this fork owns. Everything else is
 # reported, and fixed deliberately one file at a time with
 # `just maint-typos-fix <file>` / `just maint-rumdl-fix <file>`.
-FORK_OWNED=(Justfile mise.toml typos.toml betterhook.toml '.just' 'docs/justfile.md')
+FORK_OWNED=(Justfile mise.toml typos.toml betterhook.toml '.just' 'docs/justfile.md' .fork.toml 'docs/fork-differences.md')
 
 fork_owned_files() { # <extension-glob>...
   local -a files=()
@@ -105,7 +105,7 @@ if ((FIX)); then
     --fix --allow-dirty --allow-staged
   tool_present typos && step 'typos (fork-owned files)' typos_fix_scoped
   tool_present rumdl && step 'rumdl fmt (fork-owned files)' rumdl_fix_scoped
-  step 'regenerate docs/justfile.md' "$JUST_HELPERS_DIR/docs.bash" --write
+  step 'regenerate generated docs' "$JUST_HELPERS_DIR/docs.bash" --write
 
   # Report only what THIS phase changed, not the whole working tree. Comparing
   # `git diff --numstat` before and after isolates it: a file the operator had

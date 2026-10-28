@@ -156,6 +156,9 @@ lives on `mymain`.
 **Never rebase `mymain` by hand.** It carries 72 fork commits (2026-09-17, no linked worktree any more); a rebase rewrites every SHA, forces a push to `origin/mymain` and invalidates the merge bases of the side branches.
 Use `just sync-upstream`, which fast-forwards the mirror and merges. `just upstream-status` shows what would land, read-only.
 
+The fork's patch list (intent, files, drop condition per patch) lives in `.fork.toml`. `docs/fork-differences.md` is generated from it: edit the
+manifest, then `just docs`; `just docs-check` gates it.
+
 `.github/workflows/` is **fork-owned and hand-written**, and holds exactly one minimal build-and-test workflow. Upstream generates seven from
 `crates/forge_ci` as a test side effect; this fork does not — `crates/forge_ci/tests/ci.rs` now guards the directory instead of writing it (`just
 workflows-check`).
