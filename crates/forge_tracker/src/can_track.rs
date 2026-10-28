@@ -4,9 +4,10 @@ pub const VERSION: &str = match option_env!("APP_VERSION") {
     Some(v) => v,
 };
 
-/// Checks if tracking is enabled
+/// Checks if tracking is enabled: release build and no `FORGE_TRACKER=false`
+/// opt-out. Gates both PostHog events and the PostHog tracing writer.
 pub fn can_track() -> bool {
-    can_track_inner(Some(VERSION))
+    can_track_inner(Some(VERSION)) && crate::dispatch::tracking_enabled()
 }
 
 fn can_track_inner<V: AsRef<str>>(version: Option<V>) -> bool {

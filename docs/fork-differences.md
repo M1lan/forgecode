@@ -163,3 +163,8 @@ it on and closes the bypasses that turning it on exposes:
   back to `Confirm` rather than being auto-allowed. On Windows, where
   commands run through `cmd.exe` rather than a POSIX shell, the raw-string
   verdict is kept because the bash grammar does not describe that syntax.
+- **`FORGE_TRACKER=false` is a real opt-out.** Upstream gates PostHog usage
+  events and the PostHog tracing writer (`forge_tracker/src/log.rs`) on the
+  build version only; the env var just skips the email lookup. The fork adds
+  the env check to `can_track()` (`forge_tracker/src/can_track.rs`), so the
+  opt-out stops both and tracing goes to the local `~/.forge/logs` file.

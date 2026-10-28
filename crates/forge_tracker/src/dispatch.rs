@@ -164,7 +164,7 @@ impl Tracker {
     }
 }
 
-fn tracking_enabled() -> bool {
+pub(crate) fn tracking_enabled() -> bool {
     std::env::var(TRACKING_ENV_VAR_NAME)
         .map(|value| !value.eq_ignore_ascii_case("false"))
         .unwrap_or(true)
